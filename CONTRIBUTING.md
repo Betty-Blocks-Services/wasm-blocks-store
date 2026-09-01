@@ -59,7 +59,10 @@ doesn't.
 - [ ] **Actually published and tested live**: run `bb functions publish` against
       a real Betty Blocks app, drag the step onto an actual action canvas, and
       confirm it works with real input values — not just default/empty ones.
-      Say which app you tested against in the PR description.
+      Say which app you tested against in the PR description. See
+      [`docs/testing-a-step-in-a-real-app.md`](docs/testing-a-step-in-a-real-app.md)
+      for how to do this from a clone of this repo — `bb functions publish` can't
+      run directly against `wasm-blocks-store` itself.
 - [ ] **Formatted and lint-clean**: `just format-check` and `just quality-check`
       both pass (CI enforces this, but check locally first).
 - [ ] **Versioned correctly**: new step starts at `1.0/`. A breaking change to an

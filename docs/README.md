@@ -12,6 +12,9 @@ crash-course/
                                    reference, packaging/publishing, known issues.
   rust-crash-course.md            A Rust primer scoped to exactly what these components use —
                                    not general Rust. Written for zero prior Rust experience.
+testing-a-step-in-a-real-app.md  How to actually publish and test a step from this repo on a
+                                   real Betty Blocks app — the "actually published and tested
+                                   live" checklist item in CONTRIBUTING.md.
 product-feedback-log.md          Confirmed findings worth reporting to Betty Blocks' own
                                    product developers (bugs/gaps in the WASM platform itself).
 developer-learnings-log.md       Confirmed findings worth other BB developers knowing (gotchas,
