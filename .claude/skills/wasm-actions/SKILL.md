@@ -34,9 +34,18 @@ halves are this skill's job.
    Written for a total beginner to both Rust and the `bb` CLI — if you're extending these docs,
    keep that bar (explain every command, never assume prior Rust/CLI familiarity).
 3. **[bettyblocks/block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components)**
-   — Betty Blocks' own production component examples. The best source of truth for current
-   `function.json`/WIT/Rust patterns; check it before trusting this repo's docs if they disagree,
-   since the product team's repo moves independently of this one.
+   — Betty Blocks' own production Block Store component examples (generate-uuid, generate-random-hex,
+   store-file-base64, etc.). The best source of truth for current `function.json`/WIT/Rust
+   patterns; check it before trusting this repo's docs if they disagree, since the product
+   team's repo moves independently of this one.
+4. **[bettyblocks/native-wasm-components](https://github.com/bettyblocks/native-wasm-components)**
+   — Betty Blocks' first-party, built-into-the-platform steps (Create Record, Update, Upsert,
+   Delete, Expression, HTTP, Send Mail, Logging, etc.). Different repo, different build stack
+   (Elixir/mix, not this repo's Cargo/Justfile setup) — you can't build against it, but you can
+   read its `functions/` (or equivalent) listing to see what already ships natively.
+
+**Check both of these before starting to build anything new** — see "Before building a new
+step" below for why this specific check matters here.
 
 ## While working: verify before you write something down as fact
 
@@ -70,6 +79,22 @@ commit the log update (and update the relevant crash-course doc if the finding c
 it currently says) and open a PR. That commit-and-PR step is the entire point: a finding that
 stays on one person's machine doesn't compound for anyone else. If you don't have push access to
 open a PR yourself, say so explicitly rather than silently skipping this step.
+
+## Before building a new step: check it doesn't already exist
+
+Before writing any code for a step someone wants to add here, search both
+[block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components) and
+[native-wasm-components](https://github.com/bettyblocks/native-wasm-components) for a step that
+already does this. If either has it, building it here anyway is a learning exercise (genuinely
+worth doing for practice), not a contribution to this repo — say so up front, before any code
+gets written, not after.
+
+This isn't a hypothetical: this repo's own `functions/` folder is still empty specifically
+because `generate-random-hex` and `generate-uuid` — both built locally as practice — turned out
+to be near-verbatim ports of existing `block-store-wasm-components` examples, not original
+steps, and neither cleared this bar. Checking the two product repos *first* catches this before
+time goes into building and testing something that was never going to be eligible, rather than
+after.
 
 ## Contributing an actual step (not just a log entry)
 

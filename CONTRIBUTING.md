@@ -10,11 +10,15 @@ on an actual Betty Blocks app. Local tests don't catch that.
 ## Checklist before opening a PR
 
 - [ ] **It's original.** Not a verbatim or near-verbatim port of an existing native
-      or Block Store step. If you built something as a learning exercise by copying
-      an existing example, that's genuinely useful practice — it just doesn't belong
-      in this repo. Open an issue instead if you think the *official* example needs
-      a fix (e.g. a stale host-interface import) — that goes upstream to
-      `bettyblocks/block-store-wasm-components`, not here.
+      or Block Store step. Check both
+      [bettyblocks/block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components)
+      and [bettyblocks/native-wasm-components](https://github.com/bettyblocks/native-wasm-components)
+      before you start building, not after — this repo's own `functions/` folder started empty
+      specifically because two locally-built "candidates" turned out to already exist in the
+      former. If you built something as a learning exercise by copying an existing example,
+      that's genuinely useful practice — it just doesn't belong in this repo. Open an issue
+      instead if you think the *official* example needs a fix (e.g. a stale host-interface
+      import) — that goes upstream to `bettyblocks/block-store-wasm-components`, not here.
 - [ ] **`function.json` is complete**: accurate `description`, `label`, `category`,
       `icon`, and every option documented with a real `info` string. Keep the
       description under 500 characters — it's silently truncated past that, and it's
