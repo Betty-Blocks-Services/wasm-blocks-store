@@ -29,6 +29,11 @@ doesn't.
 - **CI must pass** (`ci.yml` — format, build, lint, test) before a PR is merged.
 - Merge via the PR (GitHub's default merge commit is fine — that's what both product repos do;
   no need to squash or rebase unless you personally prefer a cleaner history on your own branch).
+- **Branches delete themselves on merge** — this repo has GitHub's "Automatically delete head
+  branches" turned on, so there's no manual cleanup step after merging. (Neither product repo
+  nor wasco-dev has this on, and there's no cleanup workflow anywhere to copy — this is just the
+  plain repo setting, turned on here because remembering to delete a branch by hand every merge
+  is exactly the kind of thing that stops happening once more than one person is doing it.)
 
 ## Checklist before opening a PR
 
