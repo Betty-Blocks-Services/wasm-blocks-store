@@ -25,6 +25,19 @@ Only **completed, working** steps. Concretely, before something lands on `main`:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checklist and PR process.
 
+## Knowledge, not just code
+
+This repo is also where the knowledge from building WASM Actions lives — architecture notes, a
+Rust primer, and two running logs of confirmed findings (platform gotchas, bugs worth reporting
+to Betty Blocks' product team, corrected assumptions). See [`docs/`](docs/) for all of it.
+
+If you open Claude Code inside a clone of this repo, [`.claude/skills/wasm-actions/
+SKILL.md`](.claude/skills/wasm-actions/SKILL.md) picks this up automatically — it points Claude
+at the docs before starting work, and tells it to log anything new it confirms straight back
+into this repo (commit + PR) rather than leaving it stuck in one person's local session. That's
+the intended way this compounds: clone the repo, work inside it, and what you learn flows back
+for the next person instead of staying in a chat transcript or a one-off zip.
+
 ## Layout
 
 Each step is its own crate under `functions/<step-name>/<version>/`, following the
@@ -39,6 +52,8 @@ functions/
       wit/world.wit       # the exported WIT interface
       src/lib.rs
       tests/mod.rs
+docs/                     # shared knowledge — see docs/README.md
+.claude/skills/wasm-actions/  # auto-loads that knowledge into Claude Code sessions in this repo
 ```
 
 ## Prerequisites
@@ -72,5 +87,6 @@ It publishes every function in the project in one pass.
 
 ## Status
 
-Freshly scaffolded — no steps merged yet. The first ones will land once they clear
-the checklist in [CONTRIBUTING.md](CONTRIBUTING.md).
+Scaffolded, with the knowledge base in `docs/` seeded from the learning project that started
+this. No steps merged into `functions/` yet — the first ones will land once they clear the
+checklist in [CONTRIBUTING.md](CONTRIBUTING.md).
