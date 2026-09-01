@@ -1,0 +1,37 @@
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  run-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+          target: wasm32-wasip2
+          cache-directories: target
+          cache-all-crates: "true"
+
+      - uses: extractions/setup-just@v3
+
+      - uses: wasco-dev/workflows/.github/actions/install-wkg@main
+
+      - name: "formatting-check"
+        run: RUSTFLAGS="--deny warnings" just format-check
+
+      - name: "compile-check"
+        run: RUSTFLAGS="--deny warnings" just build
+
+      - name: "quality-check"
+        run: RUSTFLAGS="--deny warnings" just quality-check
+
+      - name: "test-check"
+        run: RUSTFLAGS="--deny warnings" just test
