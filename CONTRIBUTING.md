@@ -46,6 +46,14 @@ Include, at minimum:
   or `docs/developer-learnings-log.md` (see [`docs/README.md`](docs/README.md)) as part of the
   same PR rather than as a separate follow-up.
 
+## Grouping related steps into a block
+
+If several steps are meant to be used together (not standalone, like `slugify-text`, but a set
+that forms one logical capability), you can group them with a manifest in `blocks/` once **every
+one of them already exists individually in `functions/` and has cleared the checklist above on
+its own**. See [`blocks/README.md`](blocks/README.md) for the manifest shape and why it's framed
+as a forward-looking convention rather than a real, CLI-consumed feature today.
+
 ## Contributing knowledge without a step
 
 Not every PR needs a new component. If you confirmed something new and non-obvious while

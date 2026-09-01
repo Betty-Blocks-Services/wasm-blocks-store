@@ -52,6 +52,7 @@ functions/
       wit/world.wit       # the exported WIT interface
       src/lib.rs
       tests/mod.rs
+blocks/                   # forward-looking: manifests grouping related steps — see blocks/README.md
 docs/                     # shared knowledge — see docs/README.md
 .claude/skills/wasm-actions/  # auto-loads that knowledge into Claude Code sessions in this repo
 ```

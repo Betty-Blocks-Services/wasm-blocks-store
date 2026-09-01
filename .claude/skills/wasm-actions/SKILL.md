@@ -79,6 +79,12 @@ step), and confirmed working on a real, live action canvas, not just locally bui
 tested. Read that file before proposing a new step, and don't treat "it compiles and passes
 `cargo test`" as "it's done."
 
+If several steps are meant to work together as one logical capability (not standalone), once
+every one of them individually clears that bar, group them with a manifest in
+[`blocks/`](../../blocks/README.md) — a forward-looking convention (WASM has no `bb blocks`
+CLI/platform support yet, but Betty Blocks has confirmed it's coming), not a currently-consumed
+feature.
+
 ## A note on how this knowledge reaches people
 
 This skill only activates for someone who has cloned this repo and opened Claude Code inside it
