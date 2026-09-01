@@ -18,6 +18,25 @@ from building them. That knowledge only compounds if it's actually read before r
 that's already been done, and actually written down the moment something new is confirmed. Both
 halves are this skill's job.
 
+## Git workflow: branch + PR, not direct pushes to main
+
+Once there's more than a single-person bootstrap happening, don't push directly to `main` —
+create a branch and open a PR, even for a small change (a log entry, a docs fix), so the review
+step in [CONTRIBUTING.md](../../CONTRIBUTING.md) actually happens. This mirrors Betty Blocks'
+own product team's real convention in `block-store-wasm-components`/`native-wasm-components`
+(confirmed from their actual commit history, not assumed):
+
+- Branch name: `<type>/<short-kebab-description>` — e.g. `fix/get-fields-empty-list-panic`,
+  `docs/update-crash-course-uuid-resolution`.
+- Commit messages: [Conventional Commits](https://www.conventionalcommits.org/) — `type: summary`
+  in the imperative mood. Types in use here: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`,
+  `ci`.
+- Open the PR, don't merge it yourself — that's the human review step, not something to skip
+  just because CI is green. If you don't have push access to open a PR, say so explicitly
+  rather than silently pushing to `main` anyway or dropping the change.
+
+Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
+
 ## Before starting any WASM Actions work, read
 
 1. **`docs/product-feedback-log.md`** and **`docs/developer-learnings-log.md`** — every confirmed
@@ -76,9 +95,9 @@ a status line (open / confirmed / resolved / retracted). Newest entries go at th
 
 Then **actually get it back into this shared repo**, not just left in your local working copy —
 commit the log update (and update the relevant crash-course doc if the finding changes something
-it currently says) and open a PR. That commit-and-PR step is the entire point: a finding that
-stays on one person's machine doesn't compound for anyone else. If you don't have push access to
-open a PR yourself, say so explicitly rather than silently skipping this step.
+it currently says) on a branch, following "Git workflow" above, and open a PR. That commit-and-PR
+step is the entire point: a finding that stays on one person's machine doesn't compound for
+anyone else.
 
 ## Before building a new step: check it doesn't already exist
 
