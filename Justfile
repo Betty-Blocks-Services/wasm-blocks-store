@@ -1,4 +1,10 @@
 build:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to build."
+		exit 0
+	fi
 	cargo build --release --target wasm32-wasip2
 	just distribute-wasm
 
@@ -13,15 +19,39 @@ distribute-wasm:
 	done
 
 test: build
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to test."
+		exit 0
+	fi
 	cargo test
 
 format:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to format."
+		exit 0
+	fi
 	cargo fmt
 
 format-check:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to format-check."
+		exit 0
+	fi
 	cargo fmt --check
 
 quality-check:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to quality-check."
+		exit 0
+	fi
 	cargo clippy --all-targets -- -D warnings
 
 clean:
