@@ -33,15 +33,18 @@ doesn't.
 ## Checklist before opening a PR
 
 - [ ] **It's original.** Not a verbatim or near-verbatim port of an existing native
-      or Block Store step. Check both
-      [bettyblocks/block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components)
-      and [bettyblocks/native-wasm-components](https://github.com/bettyblocks/native-wasm-components)
-      before you start building, not after — this repo's own `functions/` folder started empty
-      specifically because two locally-built "candidates" turned out to already exist in the
-      former. If you built something as a learning exercise by copying an existing example,
-      that's genuinely useful practice — it just doesn't belong in this repo. Open an issue
-      instead if you think the *official* example needs a fix (e.g. a stale host-interface
-      import) — that goes upstream to `bettyblocks/block-store-wasm-components`, not here.
+      or Block Store step, and not something that already exists as a generic, reusable
+      component. Check
+      [bettyblocks/block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components),
+      [bettyblocks/native-wasm-components](https://github.com/bettyblocks/native-wasm-components),
+      and [wasco-dev](https://github.com/wasco-dev) before you start building, not after — this
+      repo's own `functions/` folder started empty specifically because two locally-built
+      "candidates" turned out to already exist in the first of these. If you built something as
+      a learning exercise by copying an existing example, that's genuinely useful practice — it
+      just doesn't belong in this repo. Open an issue instead if you think the *official*
+      example needs a fix (e.g. a stale host-interface import) — that goes upstream to
+      `bettyblocks/block-store-wasm-components`, not here. If something already exists on
+      wasco-dev, see [`docs/wasco-dev.md`](docs/wasco-dev.md) for how to reuse it directly.
 - [ ] **`function.json` is complete**: accurate `description`, `label`, `category`,
       `icon`, and every option documented with a real `info` string. Keep the
       description under 500 characters — it's silently truncated past that, and it's
@@ -80,6 +83,26 @@ that forms one logical capability), you can group them with a manifest in `block
 one of them already exists individually in `functions/` and has cleared the checklist above on
 its own**. See [`blocks/README.md`](blocks/README.md) for the manifest shape and why it's framed
 as a forward-looking convention rather than a real, CLI-consumed feature today.
+
+## Is this actually a wasco-dev contribution?
+
+[wasco-dev](https://github.com/wasco-dev) is a separate, public org (started by Chris Obdam,
+not this team) building generic WebAssembly components meant to be usable by any service that
+runs WASM, not just Betty Blocks — see [`docs/wasco-dev.md`](docs/wasco-dev.md) for the full
+picture. Before building something new here, ask whether it actually belongs there instead:
+
+- If it has **nothing Betty-Blocks-specific about it** — no `betty-blocks-types:*` host
+  imports, no dependency on `function.json`-only option types (Model, Property, Map,
+  MultilineText) — it's a candidate for wasco-dev rather than (or in addition to) this repo. A
+  generic string/date utility or a plain third-party-API wrapper is exactly this shape.
+- If it genuinely needs a Betty Blocks host capability (real Model/Property selectors, the
+  platform's own data API, anything only `bb functions publish` exposes), it belongs here, not
+  there.
+
+If you decide something belongs on wasco-dev: **there's no `CONTRIBUTING.md` or documented PR
+process there** (checked directly — it doesn't exist). That means proposing it to Chris Obdam
+directly, not opening a PR against an established process. This isn't a reason to avoid it, just
+a reason not to assume the same PR-and-review flow this repo uses applies over there.
 
 ## Contributing knowledge without a step
 
