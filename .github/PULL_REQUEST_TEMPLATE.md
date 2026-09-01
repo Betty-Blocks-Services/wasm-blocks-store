@@ -13,9 +13,11 @@
 
 **New or updated step:**
 
-- [ ] Not a port of an existing native or Block Store step (checked
-      [block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components)
-      and [native-wasm-components](https://github.com/bettyblocks/native-wasm-components))
+- [ ] Not a port of an existing native or Block Store step, and not already a generic,
+      reusable component (checked
+      [block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components),
+      [native-wasm-components](https://github.com/bettyblocks/native-wasm-components), and
+      [wasco-dev](https://github.com/wasco-dev))
 - [ ] `function.json` complete (`description`, `label`, `category`, `icon`, every option's `info`)
 - [ ] Unit tests pass (`just test`)
 - [ ] Actually published (`bb functions publish`) and dragged onto a real action canvas —
