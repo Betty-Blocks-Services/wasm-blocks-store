@@ -8,6 +8,41 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## `bb functions init`/`publish` have no way to target an existing folder or app ad hoc — confirming this is a CLI limitation, not a repo-shape one (2026-09-01)
+
+**Fact:** two things confirmed directly while working out how to test a step from this repo on a
+real app (see `docs/testing-a-step-in-a-real-app.md` for the full write-up):
+
+- `bb functions init <identifier> --type wasm` always scaffolds a **brand-new subdirectory** named
+  after `<identifier>` — running it in an empty scratch directory created `./<identifier>/` as a
+  new child directory, not by initializing the current directory in place. There is no flag or
+  mode to point `init` at an already-existing `functions/` folder instead of scaffolding a fresh
+  one.
+- `bb functions publish --help` has no `--app`/`--identifier` override flag — only
+  `--skip-compile` and `-a`/`--all`. There's no way to tell `publish` "target this specific app"
+  ad hoc at the command line either.
+
+Meanwhile, `bb functions validate`/`bb functions publish` already run fine directly against this
+repo's existing workspace-shaped `functions/` folder with zero restructuring — validating both of
+two newly-built functions here succeeded even though this repo was never `bb functions init`'d for
+that path. So this isn't "the shared-catalog repo's shape doesn't match what the CLI expects" —
+the repo's shape was never the problem.
+
+**Why it matters:** the app-binding the CLI needs is established once, via `init`, which only ever
+creates a fresh project directory — it's a "one directory = one app, forever" design. A shared
+catalog repo meant to be cloned by many developers targeting many different apps can't satisfy
+that 1:1 relationship by rearranging its own folders; the mismatch is conceptual, not structural.
+The working alternative is a separate, disposable `init`'d test project that symlinks the real
+`src/`/`wit/`/`function.json` back from this repo — see `docs/testing-a-step-in-a-real-app.md`.
+
+**Where this lands:** already written up as its own doc (`docs/testing-a-step-in-a-real-app.md`),
+linked from `CONTRIBUTING.md`'s checklist. Worth folding into the crash-course's publishing
+section too at some point.
+
+**Status:** confirmed directly, first-hand, 2026-09-01.
+
+---
+
 ## A plain `cargo build`/`cargo test` (no `--target`) cannot link a WIT component export — build for `wasm32-wasip2` first (2026-08-14)
 
 **Fact:** a crate using `wit_bindgen::generate!` + `export!` only produces symbols the linker can actually resolve when compiled for the `wasm32-wasip2` target. Running plain `cargo build --workspace` (native target, no `--target` flag) on a fresh multi-function workspace fails every single crate at the link step with `Undefined symbols ... "_betty-blocks:<pkg>/<pkg>@1.0.0"` / `ld: symbol(s) not found`. This isn't a code bug in the Rust — the exported WIT function's symbol only exists once the crate is actually compiled as a wasm component. The fix is simply to build with `cargo build --release --target wasm32-wasip2` (exactly what `block-store-wasm-components`'s `Justfile` `build` step already does) before running `cargo test` — the native `cargo test` binary itself links fine (it doesn't need the cdylib's export table), it's only a bare native `cargo build`/`cargo check` of the library crate that trips over this.
