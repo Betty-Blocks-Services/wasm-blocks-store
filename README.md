@@ -18,7 +18,9 @@ Only **completed, working** steps. Concretely, before something lands on `main`:
 
 - It's genuinely a new step — not a verbatim or near-verbatim copy of a component
   that already ships as a native or Block Store step (those already exist; porting
-  one for learning purposes is great practice, but it isn't community contribution).
+  one for learning purposes is great practice, but it isn't community contribution),
+  and not something that already exists as a generic, portable component on
+  [wasco-dev](https://github.com/wasco-dev) — see [`docs/wasco-dev.md`](docs/wasco-dev.md).
 - It's been published via `bb functions publish` and actually dragged onto a live
   action canvas in a real Betty Blocks app, and confirmed to work — not just
   "builds and passes `cargo test` locally."
@@ -28,8 +30,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checklist and PR process.
 ## Knowledge, not just code
 
 This repo is also where the knowledge from building WASM Actions lives — architecture notes, a
-Rust primer, and two running logs of confirmed findings (platform gotchas, bugs worth reporting
-to Betty Blocks' product team, corrected assumptions). See [`docs/`](docs/) for all of it.
+Rust primer, two running logs of confirmed findings (platform gotchas, bugs worth reporting to
+Betty Blocks' product team, corrected assumptions), and a page on [wasco-dev](https://github.com/wasco-dev),
+a separate public WASM component registry worth checking before building something from scratch.
+See [`docs/`](docs/) for all of it.
 
 If you open Claude Code inside a clone of this repo, [`.claude/skills/wasm-actions/
 SKILL.md`](.claude/skills/wasm-actions/SKILL.md) picks this up automatically — it points Claude
