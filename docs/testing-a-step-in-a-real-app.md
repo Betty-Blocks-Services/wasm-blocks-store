@@ -43,7 +43,21 @@ authenticating — just stop before confirming any actual publish.)
    This creates `./<your-app-identifier>/` with a placeholder `functions/say-hello/1.0/` example —
    that's the project the CLI now knows how to publish to.
 
-2. **For each function you want to test, symlink the real code in — don't copy it.** Inside the
+2. **Deal with the scaffolded `say-hello` sample immediately — before you symlink anything in.**
+   `init` ships `functions/say-hello/1.0/` with source but no compiled `.wasm`. Leaving it in
+   place makes `bb functions publish` fail validation for the **whole project**, not just the
+   sample:
+
+   ```
+   Error: Missing .wasm file in .../functions/say-hello/1.0
+   ```
+
+   It's also your reference for step 4 below (what a standalone `Cargo.toml`/`Justfile` looks
+   like), so look at it first — then either delete `functions/say-hello/` entirely, or run
+   `just build` inside it so it has a `.wasm` file. Do this now, not right before you try to
+   publish.
+
+3. **For each function you want to test, symlink the real code in — don't copy it.** Inside the
    new project, under `functions/<name>/1.0/`, symlink `src/`, `wit/`, and `function.json` back to
    their real location in `wasm-blocks-store/functions/<name>/1.0/`:
 
@@ -56,16 +70,16 @@ authenticating — just stop before confirming any actual publish.)
    This keeps exactly one copy of the actual step logic. Edits made in `wasm-blocks-store` are
    what you're testing live, with nothing to sync back afterward.
 
-3. **Write a standalone `Cargo.toml` and `Justfile` for that function.** `wasm-blocks-store` is a
+4. **Write a standalone `Cargo.toml` and `Justfile` for that function.** `wasm-blocks-store` is a
    Cargo workspace, so its functions use `dep.workspace = true` shortcuts and share a root
    `Justfile`/`build.rs`. A `bb functions init`-scaffolded project has none of that — it's a flat,
    standalone-per-function layout, so each function needs its own `Cargo.toml` (literal dependency
    versions, no `.workspace = true`) and its own `Justfile` (`fetch_wit_deps` / `build` /
    `move_wasm_to_root` / `test` targets). Don't assume these are identical to `wasm-blocks-store`'s
-   root versions — they aren't. Copy the shape from the `init`-scaffolded `say-hello` sample in the
-   same project instead of guessing.
+   root versions — they aren't. Copy the shape from the `say-hello` sample you looked at in step 2
+   instead of guessing.
 
-4. **Build and test standalone, inside the function's own directory:**
+5. **Build and test standalone, inside the function's own directory:**
 
    ```bash
    just build && just test
@@ -74,23 +88,54 @@ authenticating — just stop before confirming any actual publish.)
    This confirms the symlinked code still builds and passes its unit tests outside the workspace,
    with the flat project's own `Cargo.toml`/`Justfile`.
 
-5. **Publish from the test project's root** — this is where the real login/app-identifier flow
+6. **Publish from the test project's root** — this is where the real login/app-identifier flow
    happens, against the app that project was `init`'d for:
 
    ```bash
    bb functions publish
    ```
 
-6. **Drag the step onto a real action canvas in that app and confirm it works with real input
+7. **Drag the step onto a real action canvas in that app and confirm it works with real input
    values** — not just default/empty ones. This is what the `CONTRIBUTING.md` checklist item is
    actually asking for.
 
-7. **Once the step is fully verified, the test project is disposable.** Nothing unique lives in
+8. **Once the step is fully verified, the test project is disposable.** Nothing unique lives in
    it — everything was symlinked from `wasm-blocks-store` — so it can be deleted once you're done.
 
    The one exception: if you're building a step specifically for one customer/developer's own app
    rather than for reuse via `wasm-blocks-store`, the separate project is the one that should be
    kept and maintained going forward, not discarded. That's a case-by-case call, not the default.
+
+## Troubleshooting
+
+**`400` error at publish time on an option that passed `bb functions validate` locally.** The
+live publish endpoint's schema appears to be stricter than the CLI's own bundled local schema —
+seen with an option shaped like:
+
+```json
+{
+  "meta": { "type": "Text", "validations": { "required": true } },
+  "configuration": { "placeholder": "******" },
+  "name": "client-secret",
+  "label": "Client Secret"
+}
+```
+
+This passes `bb functions validate` locally, but the live endpoint rejects it:
+
+```
+Error: 400, #/options/2/meta: Expected exactly one of the schemata to match, but none of them did.
+```
+
+The working theory (not independently confirmed against the live schema's own source) is that
+`"configuration"` isn't valid alongside `meta.type: "Text"` server-side — every confirmed-working
+example in `block-store-wasm-components` (`liquid-template`, `store-file-base64`) only ever pairs
+`"configuration"` with `"MultilineText"` or `"Property"`, never `"Text"`. If you hit this, try
+removing the `"configuration"` block and publishing a plain `"Text"` option instead. This is also
+one less thing to solve than it looks: a secret-like input (a client secret, a token) doesn't need
+step-level masking at all — Betty Blocks' platform has its own Configuration feature for supplying
+values like this into a flow, with masking handled there, so a plain option is the right shape
+regardless of whether the `"configuration"` block turns out to be the actual cause of the `400`.
 
 ## Summary
 
