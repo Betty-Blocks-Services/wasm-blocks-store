@@ -7,6 +7,29 @@ tried on a real canvas has burned people before: things that build clean locally
 have failed silently or hung indefinitely once a real Model/Property value hit them
 on an actual Betty Blocks app. Local tests don't catch that.
 
+## Git workflow
+
+This mirrors how Betty Blocks' own product team works in `block-store-wasm-components` and
+`native-wasm-components` (checked directly against their real commit history, not guessed) —
+same conventions, minus the internal Jira ticket references those repos have and this one
+doesn't.
+
+- **Branch naming**: `<type>/<short-kebab-description>`, e.g. `feat/add-dissect-params`,
+  `fix/get-fields-empty-list-panic`, `docs/update-crash-course-uuid-resolution`. If there's a
+  GitHub issue, referencing its number in the PR is enough — no ticket suffix required.
+- **Commit messages**: [Conventional Commits](https://www.conventionalcommits.org/) — `type:
+  short summary` in the imperative mood (`fix: handle empty options list`, not `fixed` or
+  `fixes`). Common types here: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`. Add a
+  body when the *why* isn't obvious from the summary alone — see the existing commit history in
+  this repo for the level of detail worth including.
+- **No direct pushes to `main`** once more than one person is actively working here — open a PR
+  from a branch, even for a small change, so the review step below actually happens. (The very
+  first few commits that scaffolded this repo were pushed straight to `main` before there was
+  anyone to review against — that was a one-time bootstrapping exception, not the ongoing norm.)
+- **CI must pass** (`ci.yml` — format, build, lint, test) before a PR is merged.
+- Merge via the PR (GitHub's default merge commit is fine — that's what both product repos do;
+  no need to squash or rebase unless you personally prefer a cleaner history on your own branch).
+
 ## Checklist before opening a PR
 
 - [ ] **It's original.** Not a verbatim or near-verbatim port of an existing native
