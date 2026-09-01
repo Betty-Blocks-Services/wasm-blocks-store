@@ -62,8 +62,13 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
    Delete, Expression, HTTP, Send Mail, Logging, etc.). Different repo, different build stack
    (Elixir/mix, not this repo's Cargo/Justfile setup) — you can't build against it, but you can
    read its `functions/` (or equivalent) listing to see what already ships natively.
+5. **[docs/wasco-dev.md](../../docs/wasco-dev.md)**, and from there
+   **[github.com/wasco-dev](https://github.com/wasco-dev)** — a separate, public, *generic*
+   WASM component registry (not Betty Blocks tooling, started by Chris Obdam with a wider goal
+   than Betty Blocks). Some of its components can be pulled and uploaded into a BB app as-is;
+   `docs/wasco-dev.md` explains how and what to check first.
 
-**Check both of these before starting to build anything new** — see "Before building a new
+**Check all three of these before starting to build anything new** — see "Before building a new
 step" below for why this specific check matters here.
 
 ## While working: verify before you write something down as fact
@@ -101,17 +106,19 @@ anyone else.
 
 ## Before building a new step: check it doesn't already exist
 
-Before writing any code for a step someone wants to add here, search both
-[block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components) and
-[native-wasm-components](https://github.com/bettyblocks/native-wasm-components) for a step that
-already does this. If either has it, building it here anyway is a learning exercise (genuinely
-worth doing for practice), not a contribution to this repo — say so up front, before any code
-gets written, not after.
+Before writing any code for a step someone wants to add here, search
+[block-store-wasm-components](https://github.com/bettyblocks/block-store-wasm-components),
+[native-wasm-components](https://github.com/bettyblocks/native-wasm-components), and
+[wasco-dev](https://github.com/wasco-dev) for a step that already does this. If one of the two
+Betty Blocks repos has it, building it here anyway is a learning exercise (genuinely worth doing
+for practice), not a contribution to this repo — say so up front, before any code gets written,
+not after. If wasco-dev has it instead, see `docs/wasco-dev.md` for how to reuse it directly
+rather than rebuilding it.
 
 This isn't a hypothetical: this repo's own `functions/` folder is still empty specifically
 because `generate-random-hex` and `generate-uuid` — both built locally as practice — turned out
 to be near-verbatim ports of existing `block-store-wasm-components` examples, not original
-steps, and neither cleared this bar. Checking the two product repos *first* catches this before
+steps, and neither cleared this bar. Checking the existing repos *first* catches this before
 time goes into building and testing something that was never going to be eligible, rather than
 after.
 
@@ -128,6 +135,12 @@ every one of them individually clears that bar, group them with a manifest in
 [`blocks/`](../../blocks/README.md) — a forward-looking convention (WASM has no `bb blocks`
 CLI/platform support yet, but Betty Blocks has confirmed it's coming), not a currently-consumed
 feature.
+
+If what's being proposed has nothing Betty-Blocks-specific about it — no `betty-blocks-types:*`
+host imports, no dependency on `function.json`-only option types — pause before writing it here:
+see [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Is this actually a wasco-dev contribution?"
+section for why that might belong on [wasco-dev](https://github.com/wasco-dev) instead of (or as
+well as) this repo.
 
 ## A note on how this knowledge reaches people
 

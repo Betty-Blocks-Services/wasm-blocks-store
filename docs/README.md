@@ -17,6 +17,10 @@ product-feedback-log.md          Confirmed findings worth reporting to Betty Blo
 developer-learnings-log.md       Confirmed findings worth other BB developers knowing (gotchas,
                                    tooling quirks, corrected assumptions) — feeds back into the
                                    crash-course docs above over time.
+wasco-dev.md                      A separate, public, generic WASM component registry (not
+                                   Betty Blocks tooling) — what it is, how to reuse an existing
+                                   component inside a BB app, and when a new step should land
+                                   there instead of here.
 ```
 
 Both logs are living documents — newest entries at the top, each one dated and either
