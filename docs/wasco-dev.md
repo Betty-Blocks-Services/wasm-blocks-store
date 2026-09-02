@@ -61,6 +61,15 @@ Not every wasco-dev component is a drop-in `.wasm` you can hand to the wizard as
   it's meant to be linked with a separate HTTP-proxy component via `wac plug` before it's a
   single deployable `.wasm`. Read the component's README before assuming a straight pull-and-
   upload works.
+- **Don't trust the checked-in `wit/world.wit` alone — pull the real artifact if it matters.**
+  Confirmed on `openid-connect-api` (package `wasco-dev:open-id-connect@1.0.1`): its checked-in
+  `wit/world.wit` declares zero imports, which reads as trivially portable per the heuristic
+  above — but the actual published artifact on `ghcr.io/wasco-dev/open-id-connect:1.0.1` (pulled
+  and inspected directly) imports `wasi:http/outgoing-handler` and the rest of the `wasi:cli`/
+  `wasi:io`/`wasi:clocks` set, because its source performs its own HTTP calls via the `wstd`
+  crate. The checked-in source and the published component disagreed. Not a blocker for Betty
+  Blocks (which already supports `wasi:http/outgoing-handler`), but a reminder that "check its
+  WIT imports" above means the real `.wasm`, not just the repo's source file.
 
 ## Where a new step should actually land
 
