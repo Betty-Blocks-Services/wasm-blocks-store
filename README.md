@@ -100,4 +100,6 @@ Create/Update a Webuser, `Authenticate User` completing the login):
 - `functions/inspect-id-token/1.0/` — decodes an ID token and checks its `iss`/`aud` claims. See
   [`docs/oidc-sso-setup.md`](docs/oidc-sso-setup.md) for setup guidance.
 
+Both are grouped as one block in [`blocks/openid-connect-sso.json`](blocks/openid-connect-sso.json).
+
 See `docs/product-feedback-log.md` and `docs/developer-learnings-log.md` for the full history.
