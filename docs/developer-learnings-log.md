@@ -8,16 +8,6 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
-## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
-
-**Fact, confirmed by Betty Blocks Product:** adding a step to an action canvas isn't a purely client-side/preview action — it performs a database write (`CreateActionStep`). If any `function.json` text field ends up in a DB column longer than that column's max (255 characters, confirmed for `description`), the write is rejected. This surfaces only as a generic HTTP 500 with no field-specific error — indistinguishable from a real code bug.
-
-**Practical rule:** keep every `function.json` text field (`description`; worth checking `label` and option `info`/`label` text too) under 255 characters, and don't rely on front-end validation to catch a violation — it doesn't always. Check lengths before publishing.
-
-**Status:** confirmed directly, fix verified live, 2026-09-23.
-
----
-
 ## `anyOf`/`schemaModel`-typed `Object` outputs only bind correctly if the WIT field uses a named type alias, not a bare `string` (2026-09-24)
 
 **Fact, confirmed live:** for a custom Wasm step's `Object`-typed output (via `function.json`'s
@@ -51,7 +41,18 @@ record/function shape, when replicating this pattern for a new step.
 
 **Status:** confirmed directly, fix verified live, 2026-09-24.
 
+
+## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
+
+**Fact, confirmed by Betty Blocks Product:** adding a step to an action canvas isn't a purely client-side/preview action — it performs a database write (`CreateActionStep`). If any `function.json` text field ends up in a DB column longer than that column's max (255 characters, confirmed for `description`), the write is rejected. This surfaces only as a generic HTTP 500 with no field-specific error — indistinguishable from a real code bug.
+
+**Practical rule:** keep every `function.json` text field (`description`; worth checking `label` and option `info`/`label` text too) under 255 characters, and don't rely on front-end validation to catch a violation — it doesn't always. Check lengths before publishing.
+
+**Status:** confirmed directly, fix verified live, 2026-09-23.
+
 ---
+---
+
 ## A step that fails "Something went wrong" on canvas despite clean code might just be in the wrong sandbox — check that before debugging code (2026-09-16)
 
 **Fact:** spent several rounds chasing code-level theories for why `decode-and-verify-id-token`
@@ -85,10 +86,11 @@ to tell them apart (does *any* step fail, or just this one).
 **Update, 2026-09-23 — the registration-lineage explanation above was superseded.** The actual
 root cause, confirmed by Betty Blocks Product, was a `function.json` `description` field over 255
 characters, silently rejected as a database write — see `product-feedback-log.md`'s resolved
-entry. It wasn't a stuck function identity at all; renaming appeared to fix it purely by
-coincidence (a shorter/differently-worded description happening to land under the limit). The
-"check you're in an editable sandbox first" advice in this entry still stands on its own — that
-part was a real, separate finding.
+entry. It wasn't a stuck function identity at all, and the original claim above that publishing
+under a new name fixed it was mistaken: the ~294-character description was carried unchanged
+through every rename, and what actually fixed it was shortening the description to 220
+characters. The "check you're in an editable sandbox first" advice in this entry still stands on
+its own — that part was a real, separate finding.
 
 ---
 
@@ -540,9 +542,9 @@ compiled `.wasm` (confirmed via `git hash-object`) — the world's name isn't em
 compiled artifact at all. If it isn't in the binary, it cannot be what the platform reads to
 decide success or failure, on *any* upload path. The original `create-record`/`store-file-base64`
 comparison was real, but the actual variable was most likely something else entirely — quite
-possibly the same 255-character `description` limit or registration-lineage-shaped issue
-documented elsewhere in these logs, not the world's name. Treat "rename the world away from
-`main`" as a workaround that happened to work once, not a confirmed causal rule.
+possibly the same 255-character `description` limit documented elsewhere in these logs, not the
+world's name. Treat "rename the world away from `main`" as a workaround that happened to work
+once, not a confirmed causal rule.
 
 ---
 

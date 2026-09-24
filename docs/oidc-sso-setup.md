@@ -61,23 +61,26 @@ Schema Model.
   default and is generally fine, but some Okta/Auth0 app configurations expect Basic auth
   specifically — check your provider's app registration settings if the token exchange fails
   with an auth-related error.
-- **No PKCE.** Not needed for a confidential client that holds a client secret (this flow), which
-  is the only client type these steps support — PKCE exists specifically for clients that
-  *can't* keep a secret (native/mobile/SPA apps).
+- **No PKCE.** Not required for a confidential client (the only client type these steps support),
+  though current guidance (RFC 9700) recommends PKCE for all clients, confidential ones included,
+  as protection against authorization-code injection. Adding an optional `code-verifier` input to
+  `exchange-code-for-tokens` is a reasonable future enhancement.
 - **CSRF protection (`state`) is the flow builder's responsibility, not these steps'.** Neither
   step generates, sends, or validates `state` — build it into the authorization redirect URL
   yourself (e.g. via `generate-random-hex` and an Expression step) and check it matches on the
-  callback (a native Condition step) before calling `exchange-code-for-tokens`.
+  callback (a native Condition step) before calling `exchange-code-for-tokens`. The generated
+  `state` value must be stored between the redirect and the callback (e.g. in a record or session
+  value tied to the user's browser session) — otherwise there's nothing to compare the callback's
+  `state` against.
 
 ## Why not `wasco-dev/openid-connect-api`?
 
 `wasco-dev/openid-connect-api` already exports an `exchange-code` function that does something
 similar, and `CONTRIBUTING.md` asks new steps to justify not reusing an existing wasco-dev
-component before building from scratch. It wasn't reused here because it's built for a different
-integration shape than Betty Blocks' `function.json` step model: it does its own outbound HTTP
-internally (no way to express that as a plain Betty Blocks input/output step), and its interface
-uses WIT `variant`/`option` types that don't map onto `function.json`'s option schema. It also
-carries no OSS license and doesn't check `iss`/`aud` claims, which was the actual security bar
-these steps needed to clear. It can't be dropped into a Betty Blocks app as-is either way — see
+component before building from scratch. It wasn't reused here because it's a multi-function
+interface using WIT `variant`/`option` types with no known mapping onto `function.json`'s option
+schema (not tested). It also carries no OSS license and doesn't check `iss`/`aud` claims, which
+was the actual security bar these steps needed to clear. It can't be dropped into a Betty Blocks
+app as-is either way — see
 [`docs/wasco-dev.md`](wasco-dev.md) for how (and when) a wasco-dev component can be reused
 directly, versus when a Betty Blocks-native step is the right call instead.
