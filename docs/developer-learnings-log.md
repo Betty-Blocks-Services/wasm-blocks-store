@@ -41,6 +41,7 @@ record/function shape, when replicating this pattern for a new step.
 
 **Status:** confirmed directly, fix verified live, 2026-09-24.
 
+---
 
 ## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
 
@@ -50,7 +51,6 @@ record/function shape, when replicating this pattern for a new step.
 
 **Status:** confirmed directly, fix verified live, 2026-09-23.
 
----
 ---
 
 ## A step that fails "Something went wrong" on canvas despite clean code might just be in the wrong sandbox — check that before debugging code (2026-09-16)
