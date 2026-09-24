@@ -1,0 +1,73 @@
+{
+  "description": "Decodes an OpenID Connect ID token and checks its issuer and audience claims. Does not verify the token's cryptographic signature — only use after obtaining the token directly from the provider's token endpoint over TLS.",
+  "label": "Inspect ID Token",
+  "category": "Authentication",
+  "icon": {
+    "name": "LockIcon",
+    "color": "Blue"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "id-token",
+      "label": "ID Token",
+      "info": "The id_token returned by the identity provider's token endpoint",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "expected-issuer",
+      "label": "Expected Issuer",
+      "info": "The value the token's \"iss\" claim must exactly match, e.g. https://login.microsoftonline.com/{tenant-id}/v2.0",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "expected-audience",
+      "label": "Expected Audience",
+      "info": "The value that must be present in the token's \"aud\" claim — normally your application's client ID",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "SchemaModel"
+      },
+      "name": "schemaModel",
+      "label": "Schema Model",
+      "info": "Optionally type the claims output so later steps can bind directly to fields like claims.email"
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "anyOf": [
+            { "type": "Text" },
+            { "type": "Object", "schemaModel": "schemaModel" }
+          ]
+        }
+      },
+      "name": "claims",
+      "label": "Claims",
+      "info": "Every claim from the decoded ID token, e.g. claims.email, claims.preferred_username, claims.sub"
+    }
+  ],
+  "yields": "NONE"
+}

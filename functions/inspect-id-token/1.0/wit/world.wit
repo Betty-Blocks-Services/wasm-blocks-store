@@ -1,0 +1,20 @@
+package betty-blocks:inspect-id-token@1.0.0;
+
+interface inspect-id-token {
+    // Do not simplify this to a bare `string` return type — identical at the wasm ABI level,
+    // but a named type alias is required for the platform to bind `claims.<field>` correctly
+    // for an `anyOf`/`schemaModel`-typed Object output. See docs/developer-learnings-log.md,
+    // "anyOf/schemaModel-typed Object outputs only bind correctly if the WIT field uses a named
+    // type alias, not a bare string" (2026-09-24) for the full investigation.
+    type json-string = string;
+
+    inspect-id-token: func(
+        id-token: string,
+        expected-issuer: string,
+        expected-audience: string,
+    ) -> result<json-string, string>;
+}
+
+world main {
+    export inspect-id-token;
+}

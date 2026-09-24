@@ -43,11 +43,25 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
    finding so far, newest first. Skim recent entries for anything touching what you're about to
    do. Some are platform bugs already root-caused with a known fix or workaround — re-discovering
    them from scratch wastes time. A few examples of investigations already closed out that don't
-   need repeating: a WIT world named `main` combined with a host import breaks step-creation
-   (name it anything else); the `store-file-base64` example's stale `betty-blocks-utilities:
+   need repeating: the `store-file-base64` example's stale `betty-blocks-utilities:
    upload-file` import (moved to `betty-blocks-types:upload-file@3.0.0`); renaming/re-versioning
-   source files does not change an already-built `.wasm` — you must actually rebuild. Don't take
-   this list as complete — read the logs themselves.
+   source files does not change an already-built `.wasm` — you must actually rebuild; a
+   `function.json` text field (`description` confirmed, others likely) over 255 characters gets
+   silently rejected at step-creation time, not truncated — check lengths before publishing, see
+   `docs/product-feedback-log.md`'s resolved entry. Don't take this list as complete — read the
+   logs themselves.
+
+   One entry worth flagging explicitly rather than trusting as a blanket rule: `developer-
+   learnings-log.md` documents a WIT world named `main` combined with a host import breaking
+   step-creation — but that was confirmed only for a component uploaded through the app's own
+   3-step wizard (`create-record`). `exchange-code-for-tokens` (world `main`, imports
+   `wasi:http/outgoing-handler`) has worked reliably on canvas since 2026-09-02, published via
+   `bb functions publish`, not the wizard — a live counterexample to the rule as originally
+   stated. The likely explanation is that wizard-uploaded and CLI-published components go through
+   different registration paths, but this hasn't been rigorously tested either way. Don't rename
+   a world away from `main` on the strength of this rule alone if the component is (or will be)
+   CLI-published — and if you do hit this failure mode, check the upload path as a variable
+   before assuming it's the same bug.
 2. **`docs/crash-course/wasm-actions-crash-course.md`** and **`docs/crash-course/
    rust-crash-course.md`** — the architecture/platform primer and the Rust primer, respectively.
    Written for a total beginner to both Rust and the `bb` CLI — if you're extending these docs,

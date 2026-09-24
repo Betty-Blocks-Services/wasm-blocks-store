@@ -1,0 +1,22 @@
+package betty-blocks:exchange-code-for-tokens@1.0.0;
+
+interface exchange-code-for-tokens {
+    record token-response {
+        access-token: string,
+        id-token: string,
+    }
+
+    exchange-code-for-tokens: func(
+        token-endpoint: string,
+        client-id: string,
+        client-secret: string,
+        code: string,
+        redirect-uri: string,
+    ) -> result<token-response, string>;
+}
+
+world main {
+    import wasi:http/outgoing-handler@0.2.6;
+
+    export exchange-code-for-tokens;
+}

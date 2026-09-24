@@ -8,6 +8,210 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## A step that fails "Something went wrong" on canvas despite clean code might just be in the wrong sandbox — check that before debugging code (2026-09-16)
+
+**Fact:** spent several rounds chasing code-level theories for why `decode-and-verify-id-token`
+consistently failed to be added to any action canvas — WIT type aliases, `s64` vs `u32`, `anyOf`/
+`schemaModel` output shapes, the `base64` and `serde_json` crates individually, even an ampersand
+in the step's label. All were cleared one by one via targeted diagnostic probes (see
+`product-feedback-log.md`'s resolved entry for the full chain). It eventually turned out that a
+chunk of that testing (an entire session) was done in a **locked/higher sandbox environment that
+doesn't allow editing at all** — which produces this exact same generic "Oops! Something went
+wrong — Failed to create action step" symptom for *any* step, including Betty Blocks' own
+official, unmodified examples. None of that session's findings were real.
+
+**Why it matters:** this exact symptom is indistinguishable, from the client side, between "this
+specific function has a real problem" and "this environment doesn't allow creating action steps
+at all right now." Before spending time on code-level diagnosis, confirm you're actually in the
+intended editable sandbox — try adding *any* known-good, unrelated step (a native step, or an
+official example already known to work elsewhere) as a first sanity check. If even that fails,
+the environment is the problem, not the step.
+
+**The actual, confirmed root cause once testing resumed in the correct sandbox:** the same
+registration-lineage bug documented in this repo's `product-feedback-log.md` for `make-slug`/
+`slugify-text` — a specific function *name*/identity stuck in a broken state in a specific app,
+unrelated to its code. Fixed by publishing the exact same code under a brand-new function name.
+
+**Where this lands:** crash-course troubleshooting section — "step fails immediately when dropped
+on canvas" should list both possibilities (environment-locked vs. registration-lineage) and how
+to tell them apart (does *any* step fail, or just this one).
+
+**Status:** confirmed directly, first-hand, 2026-09-16.
+
+---
+
+## ~~`decode-and-verify-id-token` crashes — fixed by removing `anyOf`/`schemaModel` and `s64`~~ — WRONG, tested live and did not fix it; real cause is a server-side 500, tracked in `product-feedback-log.md` (2026-09-02, corrected same day)
+
+**Fact:** `decode-and-verify-id-token` crashes with a generic "Something went wrong" the moment
+it's dragged onto a real action canvas, and disappears again on refresh — despite passing `bb
+functions validate`/`publish` cleanly (see the retracted entry above: this was originally
+misattributed to `exchange-code-for-tokens`, which is actually fine). Checked every
+`meta`/WIT-type pattern this component uses against every confirmed-working custom function in
+`block-store-wasm-components` (`generate-random-hex`, `generate-uuid`, `redirect-url`,
+`store-file-base64`, `liquid-template`, `format-endpoint-result`, `concat-text`, `split-text`) and
+found **two patterns with zero precedent among them, both copied from the native HTTP step**
+(`native-wasm-components/functions/http/1.0`) rather than any confirmed custom-function example —
+the same mistake class as the `"configuration"`-on-a-Text-option schema-drift bug found earlier
+this session:
+1. The `claims` output used `"output": {"anyOf": [{"type": "Object", "schemaModel": ...}]}` — no
+   confirmed custom function anywhere uses `anyOf`/`schemaModel`. `redirect-url` (confirmed
+   working) returns an `Object` output with the plain, unwrapped `"type": "Object"` form instead.
+2. The WIT record field `exp` was typed `s64` — no confirmed custom function anywhere uses
+   `s64`/`u64` for anything; the only integer type ever confirmed working is `u32`
+   (`generate-random-hex`'s `size`, `exchange-code-for-tokens`'s own `expires-in`).
+
+**Change made (compiles/tests/lints clean locally, not yet verified live):** changed `exp` from
+`s64` to `u32` in `wit/world.wit` (a JWT Unix-timestamp `exp` claim, currently ~1.8 billion,
+comfortably fits — valid to year 2106) and the matching Rust extraction from `.as_i64()` to
+`.as_u64()` + `u32::try_from`; simplified `claims`'s `function.json` output to plain
+`{"type": "Object"}` and removed the now-unused `schemaModel` input option entirely.
+
+**Update, 2026-09-02 — tested live, republished, dragged onto canvas again: identical failure,
+byte-for-byte identical error text.** So this fix was wrong, or at least incomplete — the two
+`anyOf`/`schemaModel`/`s64` patterns removed here were real (no confirmed custom-function
+precedent for either, worth avoiding regardless), but they were not the cause of this crash. A
+browser Network-tab capture (see `product-feedback-log.md`'s updated "custom Wasm step... failed
+to create action step" entry) shows the actual failure is a **server-side HTTP 500** from the
+`CreateActionStep` GraphQL mutation, with a generic masked message — not something visible from
+local validation, and not something either of these two `function.json`/WIT changes could have
+addressed. This matches a previously-documented, still-unresolved platform bug class in that same
+log entry (`slugify-text`/`make-slug`, 2026-08-10) tied to a function's registration
+lineage/identity rather than its actual code.
+
+**Practical implication that does still hold:** `anyOf`/`schemaModel` and `s64`/`u64` remain
+patterns with zero confirmed precedent among working custom functions, copied from a native-step
+example — worth avoiding on general principle (same reasoning as the `"configuration"`-on-Text
+bug), just not the explanation for *this specific* crash. Don't repeat the mistake made here of
+treating "no confirmed precedent" as strong enough evidence to declare something fixed without a
+live retest — this cost a full round-trip that a "did the error text change at all?" check up
+front would have caught immediately.
+
+**Where this lands:** crash-course section on `function.json` option types can still note
+`anyOf`/`schemaModel`/`s64` as unprecedented-for-custom-functions and worth avoiding; the actual
+platform bug this component hit belongs in `product-feedback-log.md`, not here.
+
+---
+
+## ~~`exchange-code-for-tokens` crashes when dropped on a real canvas~~ — RETRACTED, wrong component, no bug here (2026-09-02, corrected same day)
+
+**Original (wrong) claim:** believed `exchange-code-for-tokens` was the component crashing with
+"Something went wrong" when dragged onto a real action canvas, and diagnosed it as a
+`wasi:http/outgoing-handler` version mismatch (`@0.2.6` vs. the only confirmed-working custom-
+function precedent, `store-file-base64`'s `@0.2.0`). Changed the version, confirmed it still
+compiles/tests/lints clean at `@0.2.0` — all before ever getting live confirmation.
+
+**Correction, same day:** Marcel corrected this — `exchange-code-for-tokens` was already working
+fine on canvas. **`decode-and-verify-id-token` is the one that actually crashes** when dropped on
+a real action canvas. The `@0.2.0` change was reverted (back to `@0.2.6`, confirmed via `git
+restore` against the still-staged pre-change version, rebuilt in both `wasm-blocks-store` and
+`genius-sso-test`). Since `decode-and-verify-id-token` has **zero WASI imports** (pure
+`base64`+`serde_json` compute), the whole `wasi:http` version theory doesn't even apply to it —
+this needs fresh investigation, not a variant of this one.
+
+**Why the original diagnosis felt plausible anyway:** it was built on a real, still-true
+observation (no confirmed precedent of any custom function calling `wasi:http` itself, plus the
+documented `product-feedback-log.md` precedent for silent link failures) — the reasoning wasn't
+unfounded, it was just applied to the wrong component. Worth remembering: a well-evidenced
+hypothesis about *a* problem doesn't confirm you have the *right* problem — should have confirmed
+which component was actually failing before investigating why.
+
+**Status:** retracted 2026-09-02. See below for the actual `decode-and-verify-id-token`
+investigation once it exists.
+
+---
+
+## A step's secret-like inputs (client secrets, tokens) don't need function.json-level masking — Betty Blocks' platform Configuration feature already handles that (2026-09-01)
+
+**Fact:** there's no need to try to mask a secret-like option (e.g. an OAuth `client_secret`) at
+the `function.json`/step level — Betty Blocks' platform has its own "Configuration" feature that
+serves values like a token URL, client ID, or client secret into a flow, with masking handled
+there. A step just needs a plain option (e.g. `meta.type: "Text"`) for these — the flow builder
+binds it to a Configuration value on canvas, and masking is the platform feature's job, not
+something the step's own schema needs to attempt.
+
+**Why it matters:** this is exactly why the `"configuration": {"placeholder": "******"}` cosmetic
+masking attempt on `exchange-code-for-tokens`'s `client-secret` option (added, then removed, this
+session) was solving a non-problem — not just structurally invalid against the live publish
+schema (see the entry below on schema drift), but unnecessary in the first place. Don't reach for
+step-level masking tricks for secret-like inputs; a plain option is correct and the real masking
+happens one layer up, in the platform's Configuration feature.
+
+**Where this lands:** crash-course section on designing `function.json` options for
+credentials/secrets — plain option, no masking attempt, point at the platform's Configuration
+feature for how the actual value gets supplied and protected.
+
+**Status:** relayed directly by Marcel Korporaal (Betty Blocks Solution Engineer) from his own
+platform knowledge, 2026-09-01 — not independently re-verified against the Configuration feature's
+UI/docs in this session, but from the primary domain expert on this project, not secondhand.
+
+---
+
+## `bb functions init --type wasm` scaffolds a flat, standalone-per-function project — not a workspace like this repo (2026-09-01)
+
+**Fact:** running `bb functions init <identifier> --type wasm` creates a new directory with a
+`.wasm-functions` marker and a sample `functions/say-hello/1.0/` folder, but there is **no root
+`Cargo.toml`/`Justfile`/`build.rs`** — each function is its own independent Cargo project (its
+own `Cargo.toml` with literal dependency versions, its own `Cargo.lock`, and its own per-function
+`Justfile` with `fetch_wit_deps`/`build`/`move_wasm_to_root`/`test` targets). This is structurally
+different from `wasm-blocks-store`'s (and `block-store-wasm-components`'s) shared-workspace
+convention — one root `[workspace]` `Cargo.toml` with pinned `workspace.dependencies`, one root
+`Justfile`/`build.rs` driving every function together.
+
+**Why it matters:** moving a step from this repo into a `bb functions init`-created test-app
+project for live canvas testing isn't a straight `cp -r` — each function needs its own
+standalone `Cargo.toml` (spelling out literal versions instead of `dep.workspace = true`) and its
+own `Justfile` written to match that flat convention. Symlinking just `src/`, `wit/`, and
+`function.json` from this repo into the test-app project (and writing fresh, throwaway
+`Cargo.toml`/`Justfile` files there) avoids maintaining two copies of the actual step logic while
+still letting `bb functions publish` build and ship it from the test app.
+
+**Where this lands:** crash-course section on testing a step in a real app before opening a PR —
+worth a short note + the symlink approach, since "move the code over" is a real step in the
+workflow, not something CONTRIBUTING.md's checklist currently spells out mechanically.
+
+**Status:** confirmed directly, first-hand, 2026-09-01 — scaffolded a test project, then set up
+`decode-and-verify-id-token` and `exchange-code-for-tokens` in it via symlinks + standalone
+`Cargo.toml`/`Justfile`, and confirmed both build (`wasm32-wasip2` release) and pass their unit
+tests there, identically to how they build/test inside `wasm-blocks-store`.
+
+---
+
+## A component can pin its own `wit-bindgen` version (overriding the workspace default) to use `waki` for real outbound HTTP from inside a component, in this same Cargo/Justfile build stack (2026-09-01)
+
+**Fact:** `wasm-blocks-store`'s workspace pins `wit-bindgen = "0.58.0"` for every function by default. Building `exchange-code-for-tokens` (a component that performs its own outbound HTTPS POST, mirroring `native-wasm-components`' own HTTP step) required the older `wit-bindgen = "0.42.0"` + `waki = "0.5.1"` + `wasi = "0.14.2"` combination instead — `waki`'s HTTP client is built against the official `wasi` crate's own generated `wasi:http` bindings, and this crate's own `wit_bindgen::generate!` has to reuse those exact same types via a `with:` remap (`"wasi:http/outgoing-handler@0.2.6": ::wasi::http::outgoing_handler`, etc. — copied verbatim from `native-wasm-components/functions/http/1.0/src/lib.rs`) rather than generating a second, incompatible copy of those types. Simply declaring `wit-bindgen = "0.42.0"` directly in that one function's `Cargo.toml` (instead of `wit-bindgen.workspace = true`) was enough — Cargo is fine resolving two different versions of `wit-bindgen` across different workspace members, since it's a proc-macro/codegen dependency, not something that needs a single ABI-compatible version workspace-wide. `cargo build --release --target wasm32-wasip2`, the native `cargo test` (unit tests), and the wasmtime-based component integration test (`tests/mod.rs`, instantiating the real compiled `.wasm` and calling it through its WIT interface) all passed cleanly with no version-skew errors. `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` were also clean.
+
+**Why it matters:** the crash-course/skill previously treated `native-wasm-components` as "different build stack (Elixir/mix), you can't build against it" — true for that repo itself, but this confirms the *pattern* it uses (direct `waki`/`wasi:http` calls from inside a component, rather than delegating to a host-provided capability like `store-file-base64` does for uploads) is fully portable into this repo's own Cargo/Justfile stack, on a per-function basis, without touching the workspace's shared `wit-bindgen` pin for every other function.
+
+**Where this lands:** crash-course section on making outbound HTTP calls from a component — as an alternative to the native HTTP step, when a dedicated step needs to perform its own request (e.g. to spare the flow builder from hand-building a correctly-encoded body/headers). Should note the exact version trio and the `with:` remap requirement, since getting either wrong would likely fail at compile time or (worse) produce a component that compiles but panics/traps at the `wasi:http` boundary.
+
+**Status:** confirmed directly, first-hand, 2026-09-01, building `exchange-code-for-tokens` in `wasm-blocks-store`.
+
+---
+
+## `bettyblocks/fusionauth_jwt_rs` proves pure-Rust JWT (RS256, JWKS-based) verification is buildable for `wasm32-wasip2`, but only with `jsonwebtoken`'s `rust_crypto` backend (2026-09-01)
+
+**Fact:** `jsonwebtoken`'s default feature set pulls in `ring`/`aws-lc-rs` (C/assembly, OS-RNG-dependent), which do not compile for `wasm32-wasip2`. `bettyblocks/fusionauth_jwt_rs` is a real, CI-tested-for-wasm32-wasip2 repo that uses `jsonwebtoken` with `default-features = false, features = ["rust_crypto"]` instead — a pure-Rust backend — and does full RS256 JWKS-based signature verification (`iss`/`aud`/`exp` validation, `kid`-matched key selection) plus its own JWKS fetch via `wasi:http/outgoing-handler`. Confirmed by reading that repo's `Cargo.toml`/README directly (not secondhand), not by building it ourselves in this repo.
+
+**Why it matters:** not needed for `decode-and-verify-id-token` (built 2026-09-01) — that component deliberately skips cryptographic signature verification, only checking `iss`/`aud`/`exp` claims, per an explicit product decision that this is a sufficient bar for now. But if a future step ever needs real signature verification (e.g. accepting an `id_token` from a source that isn't a direct, TLS'd call to the provider's own token endpoint), this is the proven starting point — don't reach for plain `jsonwebtoken` with default features, it won't compile for this target.
+
+**Where this lands:** crash-course section on cryptography/JWT handling in components, as a "if you ever need this" pointer — not urgent to write up in detail until a step actually needs it.
+
+**Status:** confirmed by direct inspection of the `fusionauth_jwt_rs` repo's own `Cargo.toml`/README, 2026-09-01. Not independently built/tested in this repo.
+
+---
+
+## `wasco-dev/openid-connect-api`'s checked-in `wit/world.wit` understates its real import surface (2026-09-01)
+
+**Fact:** the checked-in `wit/world.wit` for `wasco-dev/openid-connect-api` (package `wasco-dev:open-id-connect@1.0.1`) declares `world main { export oidc-client; }` with no imports at all, which reads as "zero imports, trivially portable" per this repo's own `docs/wasco-dev.md` heuristic. But the actual published artifact (`ghcr.io/wasco-dev/open-id-connect:1.0.1`, pulled and inspected directly via `wash`) imports `wasi:http/outgoing-handler`/`wasi:http/types` plus the full `wasi:cli` set, `wasi:clocks/monotonic-clock`, `wasi:io/*`, and `wasi:random/insecure-seed` — because its `src/client.rs` performs its own HTTP calls via the `wstd` crate. The checked-in WIT source and the actually-compiled/published component disagree.
+
+**Why it matters:** anyone relying on `docs/wasco-dev.md`'s "check its WIT imports" guidance by reading the repo's checked-in `wit/world.wit` file alone (rather than pulling and inspecting the real published `.wasm`) would wrongly conclude this component is zero-import/portable. It does need the same `wasi:http` capability any HTTP-calling component needs — not a blocker for Betty Blocks (which already supports `wasi:http/outgoing-handler`), but worth knowing before assuming "no imports" from the source alone.
+
+**Where this lands:** `docs/wasco-dev.md`'s "Is it actually portable? Check before assuming" section — add a note that the checked-in WIT source isn't guaranteed to match the published artifact's real import surface for every wasco-dev component; when in doubt, pull and inspect the actual `.wasm`.
+
+**Status:** confirmed by directly pulling and inspecting the published `ghcr.io/wasco-dev/open-id-connect:1.0.1` artifact, 2026-09-01. Worth a heads-up to Chris Obdam at some point; not blocking anything in this repo since `wasm-blocks-store` didn't end up depending on this component (see the OpenID Connect SSO build plan).
+
+---
+
 ## A plain `cargo build`/`cargo test` (no `--target`) cannot link a WIT component export — build for `wasm32-wasip2` first (2026-08-14)
 
 **Fact:** a crate using `wit_bindgen::generate!` + `export!` only produces symbols the linker can actually resolve when compiled for the `wasm32-wasip2` target. Running plain `cargo build --workspace` (native target, no `--target` flag) on a fresh multi-function workspace fails every single crate at the link step with `Undefined symbols ... "_betty-blocks:<pkg>/<pkg>@1.0.0"` / `ld: symbol(s) not found`. This isn't a code bug in the Rust — the exported WIT function's symbol only exists once the crate is actually compiled as a wasm component. The fix is simply to build with `cargo build --release --target wasm32-wasip2` (exactly what `block-store-wasm-components`'s `Justfile` `build` step already does) before running `cargo test` — the native `cargo test` binary itself links fine (it doesn't need the cdylib's export table), it's only a bare native `cargo build`/`cargo check` of the library crate that trips over this.
@@ -186,6 +390,8 @@ The compiled guest component's import (old interface identity + old `input` shap
 
 **Status:** confirmed directly, first-hand, via a single-variable test.
 
+**Update, 2026-09-24 — narrower than originally stated: confirmed only for the wizard-upload path, not `bb functions publish`.** `exchange-code-for-tokens` (`wasm-blocks-store/functions/exchange-code-for-tokens/1.0/`) declares `world main` with a real host import (`wasi:http/outgoing-handler@0.2.6`) — the exact shape this entry says fails — and has worked reliably on canvas since 2026-09-02, published via `bb functions publish` (CLI), not the app's "Add custom Wasm step" wizard. The original comparison (`create-record` failing vs. `store-file-base64` working) was run entirely through the wizard-upload path, so it's still solid evidence *for that path* — but it doesn't establish the rule for CLI-published components, and this is a live counterexample there. Most likely explanation: wizard-uploaded and CLI-published components go through different registration paths on the platform (consistent with other entries in `product-feedback-log.md` showing CLI-publish and wizard-upload behaving differently for the same component). Not rigorously tested either way — treat "avoid `world main` with imports" as confirmed for wizard uploads only until someone actually retests the CLI-publish path deliberately.
+
 ---
 
 ## ~~The platform auto-generates real Model/Property picker inputs directly from WIT types~~ — RETRACTED, it's a synthetic placeholder, not a real picker (2026-08-07, corrected 2026-08-10)
@@ -252,5 +458,50 @@ This also explains `block-store-action-functions` (BB's own bundle of many Actio
 **Where this lands:** crash-course section on reusing a Block Store component in a standalone project — document the exact list of `Cargo.toml` fields to resolve (above) as the complete fix, and note the WIT/Rust/test files need no changes at all. Also flag in section 3.9 (the publish-flow write-up) that the "automatic UUID resolution" claim isn't reliable in every case — a manual UUID prompt can appear, and neither this nor the earlier entry has pinned down the exact trigger yet.
 
 **Status:** Fact 1 confirmed directly, first-hand, 2026-08-19. Fact 2 observed directly, first-hand, 2026-08-19, but root cause not yet diagnosed — treat as an open correction, not a fully understood mechanism.
+
+---
+
+## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
+
+**Fact, confirmed by Betty Blocks Product:** adding a step to an action canvas isn't a purely client-side/preview action — it performs a database write (`CreateActionStep`). If any `function.json` text field ends up in a DB column longer than that column's max (255 characters, confirmed for `description`), the write is rejected. This surfaces only as a generic HTTP 500 with no field-specific error — indistinguishable from a real code bug.
+
+**Practical rule:** keep every `function.json` text field (`description`; worth checking `label` and option `info`/`label` text too) under 255 characters, and don't rely on front-end validation to catch a violation — it doesn't always. Check lengths before publishing.
+
+**Status:** confirmed directly, fix verified live, 2026-09-23.
+
+---
+
+## `anyOf`/`schemaModel`-typed `Object` outputs only bind correctly if the WIT field uses a named type alias, not a bare `string` (2026-09-24)
+
+**Fact, confirmed live:** for a custom Wasm step's `Object`-typed output (via `function.json`'s
+`"anyOf": [..., {"type": "Object", "schemaModel": "..."}]`, matching the native HTTP step's own
+pattern) to actually bind individual fields correctly on canvas (`output.someField` resolving to
+that field's real value, not the whole raw string), the underlying WIT record field must be typed
+as a **named type alias** (e.g. `type json-string = string; record r { claims: json-string }`),
+not a bare, unaliased `string` (`record r { claims: string }`). Both compile to the exact same
+`string` at the actual wasm ABI level — the alias makes zero difference to the bytes on the wire —
+but the platform apparently reads the component's own embedded WIT type metadata (not just
+`function.json`) when deciding how to treat an output field. A bare `string` gets treated as plain
+text with no parsing; a field typed via a named alias gets recognized and JSON-parsed for real
+field-level binding.
+
+**How this was found:** `inspect-id-token`'s `claims` output kept showing as a raw JSON-text string
+on canvas — visible in the log panel, and confirmed for real via a downstream Create-record step
+failing validation because schema-bound fields (`claims.name`, `claims.preferred_username`) were
+empty. The native HTTP step's own `Response as: Object` binding was confirmed working end-to-end
+(built a real record using a bound field from a live HTTP call) as the control. Every other avenue
+was ruled out first: `function.json` was verified byte-identical to HTTP's own pattern; the Rust
+code was rewritten to literally mirror HTTP's parse/stringify idiom; pretty vs. compact JSON
+formatting made no difference; an explicit `is_object()` check confirmed the Rust-side parsing was
+already correct. The only thing left unchecked was the WIT file itself — HTTP declares
+`type json-string = string;` and uses that alias for its output field; `inspect-id-token` used a
+bare `string`. Renaming to match fixed it immediately.
+
+**Practical rule:** when a custom Wasm step declares an `Object`/`Array`-typed output via
+`anyOf`/`schemaModel` (the pattern copied from native steps like HTTP), the WIT field backing that
+output must use a named type alias, not a bare primitive type — copy the alias, not just the
+record/function shape, when replicating this pattern for a new step.
+
+**Status:** confirmed directly, fix verified live, 2026-09-24.
 
 ---
