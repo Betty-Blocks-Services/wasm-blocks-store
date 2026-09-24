@@ -35,6 +35,50 @@ doesn't.
   plain repo setting, turned on here because remembering to delete a branch by hand every merge
   is exactly the kind of thing that stops happening once more than one person is doing it.)
 
+## Designing for the people who'll actually use this
+
+The person configuring a step on canvas is almost always a business analyst or Betty
+Blocks power user — not a developer, and not the person who wrote the step's code.
+They can't read the Rust, don't have a stack trace to go on, and are debugging
+entirely through labels, info text, and error messages. Design for that:
+
+- **Plain English, but don't overcorrect.** Prefer everyday words over spec/protocol
+  jargon in labels (`Expected Client ID` over `aud`). Don't go so far the other way
+  that someone who *does* know the domain gets confused by an oversimplified label —
+  the goal is clarity, not dumbing down.
+- **Every option gets a real `info` string, always — no exceptions for "the label is
+  self-explanatory."** Whether a label needs explaining isn't our call to make on
+  behalf of whoever's actually configuring the step — if they already understand it,
+  they just won't read the info text; but deciding for them that they don't need it
+  is exactly the kind of judgment we're not in a position to make.
+- **A step should basically only error on misconfiguration.** The person hitting an
+  error is rarely the person who wrote the code and usually can't read it. So:
+  validate every input against what's expected as early in the step as possible
+  (fail fast, not three computations deep), and every error message should name what
+  was expected, what was actually found, and — wherever there's a sensible fix — say
+  what to check or change (e.g. `"...found \"Y\" — check that \"Expected Issuer\"
+  matches the value your identity provider actually issues"`, not just `"...found
+  \"Y\""`).
+- **Flat output shapes over nested ones.** A canvas builder binds `step.output` by
+  clicking through a picker, not by reading a schema — every extra layer of nested
+  structure is one more thing to understand. Prefer several flat outputs, or one
+  `SchemaModel`-typed `Object` output the builder can define fields on directly, over
+  a nested record.
+- **`required: true` on an output means "this is the reason the step exists," not
+  "this happens to always be non-empty."** A step usually has one or two outputs that
+  are the actual point of using it — those should be required. An output that's a
+  genuinely optional extra (useful for some flows, irrelevant to most) should stay
+  unmarked, even if it's always technically populated on success — marking it
+  required forces the platform to materialize it as an available variable whether or
+  not the builder needs it, which is pure clutter for the common case that doesn't
+  use it.
+- **Use `category` *and* icon `color` together** for discoverability — a step is
+  found by scanning a palette, not by reading documentation first. Match sibling
+  steps' conventions rather than inventing new ones per step.
+- **Every `function.json` text field stays under 255 characters** (`description`,
+  `label`, option `info`) — see the checklist item below; this is a hard platform
+  constraint, not a style preference.
+
 ## Checklist before opening a PR
 
 - [ ] **It's original.** Not a verbatim or near-verbatim port of an existing native
@@ -51,10 +95,21 @@ doesn't.
       `bettyblocks/block-store-wasm-components`, not here. If something already exists on
       wasco-dev, see [`docs/wasco-dev.md`](docs/wasco-dev.md) for how to reuse it directly.
 - [ ] **`function.json` is complete**: accurate `description`, `label`, `category`,
-      `icon`, and every option documented with a real `info` string. Keep the
-      description under 500 characters — it's silently truncated past that, and it's
-      not currently surfaced in the BB IDE at block/step creation time anyway, so
-      don't rely on it being visible there.
+      `icon`, and every option documented with a real `info` string. Keep every text
+      field — `description` (confirmed), and `label`/option `info` text (not yet
+      individually confirmed, treat as the same limit until checked) — under 255
+      characters. Past that, the value is **rejected outright** as a database write
+      the moment the step is dragged onto a canvas (`CreateActionStep` fails with a
+      generic "Something went wrong", not a length-specific error), not silently
+      truncated — and front-end validation does not reliably catch it before publish.
+      See `docs/product-feedback-log.md`'s resolved "custom Wasm step fails 'Add step
+      to canvas'" entry for the full story; it cost a multi-day investigation the
+      first time.
+- [ ] **Designed for a non-developer user**: labels/info text/errors follow
+      ["Designing for the people who'll actually use this"](#designing-for-the-people-wholl-actually-use-this)
+      above — plain English where it helps, a real `info` string on *every* option,
+      error messages that say what to check, flat output shapes, and `required` used
+      to mean "the point of the step," not "always non-empty."
 - [ ] **Unit tests exist and pass** (`just test`).
 - [ ] **Actually published and tested live**: run `bb functions publish` against
       a real Betty Blocks app, drag the step onto an actual action canvas, and

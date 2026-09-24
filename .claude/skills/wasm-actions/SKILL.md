@@ -43,11 +43,24 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
    finding so far, newest first. Skim recent entries for anything touching what you're about to
    do. Some are platform bugs already root-caused with a known fix or workaround — re-discovering
    them from scratch wastes time. A few examples of investigations already closed out that don't
-   need repeating: a WIT world named `main` combined with a host import breaks step-creation
-   (name it anything else); the `store-file-base64` example's stale `betty-blocks-utilities:
+   need repeating: the `store-file-base64` example's stale `betty-blocks-utilities:
    upload-file` import (moved to `betty-blocks-types:upload-file@3.0.0`); renaming/re-versioning
-   source files does not change an already-built `.wasm` — you must actually rebuild. Don't take
-   this list as complete — read the logs themselves.
+   source files does not change an already-built `.wasm` — you must actually rebuild; a
+   `function.json` text field (`description` confirmed, others likely) over 255 characters gets
+   silently rejected at step-creation time, not truncated — check lengths before publishing, see
+   `docs/product-feedback-log.md`'s resolved entry. Don't take this list as complete — read the
+   logs themselves.
+
+   One entry worth flagging explicitly rather than trusting as a blanket rule: `developer-
+   learnings-log.md` documents a claim that a WIT world named `main` combined with a host import
+   breaks step-creation — this is doubtful and likely coincidental, not a real mechanism.
+   `exchange-code-for-tokens` (world `main`, imports `wasi:http/outgoing-handler`) has worked
+   reliably on canvas since 2026-09-02, a live counterexample. More fundamentally,
+   `product-feedback-log.md`'s `slugify-text`/`make-slug` entry already established that renaming
+   a component's WIT world produces a byte-for-byte identical compiled `.wasm` — the world's name
+   isn't in the binary at all, so it can't be what the platform reads to decide success or
+   failure. Don't rename a world away from `main` expecting it to fix a step-creation failure —
+   look at other variables instead (description length, registration history).
 2. **`docs/crash-course/wasm-actions-crash-course.md`** and **`docs/crash-course/
    rust-crash-course.md`** — the architecture/platform primer and the Rust primer, respectively.
    Written for a total beginner to both Rust and the `bb` CLI — if you're extending these docs,

@@ -24,6 +24,10 @@ wasco-dev.md                      A separate, public, generic WASM component reg
                                    Betty Blocks tooling) — what it is, how to reuse an existing
                                    component inside a BB app, and when a new step should land
                                    there instead of here.
+oidc-sso-setup.md                 Usage guide for `exchange-code-for-tokens` +
+                                   `inspect-id-token`: what configuration values you need per
+                                   provider, and how to find out what your provider's ID token
+                                   actually contains (a starter claims reference for Entra).
 ```
 
 Both logs are living documents — newest entries at the top, each one dated and either

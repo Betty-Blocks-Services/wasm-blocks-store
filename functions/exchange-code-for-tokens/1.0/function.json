@@ -1,0 +1,97 @@
+{
+  "description": "Exchanges an OAuth 2.0/OpenID Connect authorization code for tokens at the identity provider's token endpoint. Works with any provider — Microsoft Entra, Google, Auth0, etc.",
+  "label": "Exchange Code for Tokens",
+  "category": "Authentication",
+  "icon": {
+    "name": "LockIcon",
+    "color": "Blue"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "token-endpoint",
+      "label": "Token Endpoint",
+      "info": "The identity provider's token endpoint, e.g. https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "client-id",
+      "label": "Client ID",
+      "info": "The identity provider's client ID for this application",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "client-secret",
+      "label": "Client Secret",
+      "info": "The identity provider's client secret for this application",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "code",
+      "label": "Authorization Code",
+      "info": "The \"code\" query parameter received on the redirect URI callback",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "redirect-uri",
+      "label": "Redirect URI",
+      "info": "Must exactly match the redirect URI used on the authorization request",
+      "advanced": false
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "access-token",
+      "label": "Access Token",
+      "info": "Use this to make further calls to the provider's API (e.g. Microsoft Graph) on the user's behalf, if needed"
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "id-token",
+      "label": "ID Token",
+      "info": "Pass this into an ID-token-verification step to check its claims"
+    }
+  ],
+  "yields": "NONE"
+}

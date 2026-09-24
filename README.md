@@ -90,8 +90,14 @@ bb functions publish
 `publish` prompts you to log in automatically if needed — no separate login step.
 It publishes every function in the project in one pass.
 
-## Status
+## Status (2026-09-24)
 
-Scaffolded, with the knowledge base in `docs/` seeded from the learning project that started
-this. No steps merged into `functions/` yet — the first ones will land once they clear the
-checklist in [CONTRIBUTING.md](CONTRIBUTING.md).
+Two steps for a generic OpenID Connect SSO login flow, canvas-verified end to end against a real
+Microsoft Entra tenant (full login round-trip, `claims` bound via a typed Schema Model to
+Create/Update a Webuser, `Authenticate User` completing the login):
+
+- `functions/exchange-code-for-tokens/1.0/` — exchanges an authorization code for tokens.
+- `functions/inspect-id-token/1.0/` — decodes an ID token and checks its `iss`/`aud` claims. See
+  [`docs/oidc-sso-setup.md`](docs/oidc-sso-setup.md) for setup guidance.
+
+See `docs/product-feedback-log.md` and `docs/developer-learnings-log.md` for the full history.

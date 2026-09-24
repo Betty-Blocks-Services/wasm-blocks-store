@@ -1,0 +1,17 @@
+[package]
+name = "inspect-id-token"
+version = "1.0.0"
+edition.workspace = true
+build = "../../../build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wit-bindgen = { workspace = true }
+
+[dev-dependencies]
+wasmtime-testing-helper = { workspace = true }
