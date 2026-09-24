@@ -53,3 +53,31 @@ Also present but rarely useful for application logic: `aio`, `rh`, `uti` (intern
 tokens), `sid` (session ID), `ver` (token version), `iat`/`nbf` (issued-at/not-before
 timestamps). `iss` and `aud` are already checked by the step itself and don't need to be in your
 Schema Model.
+
+## Known limitations
+
+- **Only `client_secret_post` is supported** (the client secret is sent in the token request
+  body) — there's no `client_secret_basic` (HTTP Basic auth header) support. This matches Entra's
+  default and is generally fine, but some Okta/Auth0 app configurations expect Basic auth
+  specifically — check your provider's app registration settings if the token exchange fails
+  with an auth-related error.
+- **No PKCE.** Not needed for a confidential client that holds a client secret (this flow), which
+  is the only client type these steps support — PKCE exists specifically for clients that
+  *can't* keep a secret (native/mobile/SPA apps).
+- **CSRF protection (`state`) is the flow builder's responsibility, not these steps'.** Neither
+  step generates, sends, or validates `state` — build it into the authorization redirect URL
+  yourself (e.g. via `generate-random-hex` and an Expression step) and check it matches on the
+  callback (a native Condition step) before calling `exchange-code-for-tokens`.
+
+## Why not `wasco-dev/openid-connect-api`?
+
+`wasco-dev/openid-connect-api` already exports an `exchange-code` function that does something
+similar, and `CONTRIBUTING.md` asks new steps to justify not reusing an existing wasco-dev
+component before building from scratch. It wasn't reused here because it's built for a different
+integration shape than Betty Blocks' `function.json` step model: it does its own outbound HTTP
+internally (no way to express that as a plain Betty Blocks input/output step), and its interface
+uses WIT `variant`/`option` types that don't map onto `function.json`'s option schema. It also
+carries no OSS license and doesn't check `iss`/`aud` claims, which was the actual security bar
+these steps needed to clear. It can't be dropped into a Betty Blocks app as-is either way — see
+[`docs/wasco-dev.md`](wasco-dev.md) for how (and when) a wasco-dev component can be reused
+directly, versus when a Betty Blocks-native step is the right call instead.

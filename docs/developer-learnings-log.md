@@ -8,6 +8,50 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
+
+**Fact, confirmed by Betty Blocks Product:** adding a step to an action canvas isn't a purely client-side/preview action — it performs a database write (`CreateActionStep`). If any `function.json` text field ends up in a DB column longer than that column's max (255 characters, confirmed for `description`), the write is rejected. This surfaces only as a generic HTTP 500 with no field-specific error — indistinguishable from a real code bug.
+
+**Practical rule:** keep every `function.json` text field (`description`; worth checking `label` and option `info`/`label` text too) under 255 characters, and don't rely on front-end validation to catch a violation — it doesn't always. Check lengths before publishing.
+
+**Status:** confirmed directly, fix verified live, 2026-09-23.
+
+---
+
+## `anyOf`/`schemaModel`-typed `Object` outputs only bind correctly if the WIT field uses a named type alias, not a bare `string` (2026-09-24)
+
+**Fact, confirmed live:** for a custom Wasm step's `Object`-typed output (via `function.json`'s
+`"anyOf": [..., {"type": "Object", "schemaModel": "..."}]`, matching the native HTTP step's own
+pattern) to actually bind individual fields correctly on canvas (`output.someField` resolving to
+that field's real value, not the whole raw string), the underlying WIT field — a record field, or a function's own return
+type — must be typed as a **named type alias** (e.g. `type json-string = string; record r { claims: json-string }`),
+not a bare, unaliased `string` (`record r { claims: string }`). Both compile to the exact same
+`string` at the actual wasm ABI level — the alias makes zero difference to the bytes on the wire —
+but the platform apparently reads the component's own embedded WIT type metadata (not just
+`function.json`) when deciding how to treat an output field. A bare `string` gets treated as plain
+text with no parsing; a field typed via a named alias gets recognized and JSON-parsed for real
+field-level binding.
+
+**How this was found:** `inspect-id-token`'s `claims` output kept showing as a raw JSON-text string
+on canvas — visible in the log panel, and confirmed for real via a downstream Create-record step
+failing validation because schema-bound fields (`claims.name`, `claims.preferred_username`) were
+empty. The native HTTP step's own `Response as: Object` binding was confirmed working end-to-end
+(built a real record using a bound field from a live HTTP call) as the control. Every other avenue
+was ruled out first: `function.json` was verified byte-identical to HTTP's own pattern; the Rust
+code was rewritten to literally mirror HTTP's parse/stringify idiom; pretty vs. compact JSON
+formatting made no difference; an explicit `is_object()` check confirmed the Rust-side parsing was
+already correct. The only thing left unchecked was the WIT file itself — HTTP declares
+`type json-string = string;` and uses that alias for its output field; `inspect-id-token` used a
+bare `string`. Renaming to match fixed it immediately.
+
+**Practical rule:** when a custom Wasm step declares an `Object`/`Array`-typed output via
+`anyOf`/`schemaModel` (the pattern copied from native steps like HTTP), the WIT field backing that
+output must use a named type alias, not a bare primitive type — copy the alias, not just the
+record/function shape, when replicating this pattern for a new step.
+
+**Status:** confirmed directly, fix verified live, 2026-09-24.
+
+---
 ## A step that fails "Something went wrong" on canvas despite clean code might just be in the wrong sandbox — check that before debugging code (2026-09-16)
 
 **Fact:** spent several rounds chasing code-level theories for why `decode-and-verify-id-token`
@@ -37,6 +81,14 @@ on canvas" should list both possibilities (environment-locked vs. registration-l
 to tell them apart (does *any* step fail, or just this one).
 
 **Status:** confirmed directly, first-hand, 2026-09-16.
+
+**Update, 2026-09-23 — the registration-lineage explanation above was superseded.** The actual
+root cause, confirmed by Betty Blocks Product, was a `function.json` `description` field over 255
+characters, silently rejected as a database write — see `product-feedback-log.md`'s resolved
+entry. It wasn't a stuck function identity at all; renaming appeared to fix it purely by
+coincidence (a shorter/differently-worded description happening to land under the limit). The
+"check you're in an editable sandbox first" advice in this entry still stands on its own — that
+part was a real, separate finding.
 
 ---
 
@@ -89,6 +141,13 @@ front would have caught immediately.
 **Where this lands:** crash-course section on `function.json` option types can still note
 `anyOf`/`schemaModel`/`s64` as unprecedented-for-custom-functions and worth avoiding; the actual
 platform bug this component hit belongs in `product-feedback-log.md`, not here.
+
+**Update, 2026-09-24 — the "avoid `anyOf`/`schemaModel` on general principle" advice above is
+superseded.** `inspect-id-token` now ships that exact `anyOf`/`schemaModel` pattern for its
+`claims` output, confirmed working live on canvas (see the 2026-09-24 entry, now at the top of
+this log, on the WIT named-alias requirement). It's a legitimate, supported pattern — the earlier
+"zero confirmed precedent" concern just hadn't been tested through to a working example yet. `s64`
+being untested for custom functions is still true and unrelated to this correction.
 
 ---
 
@@ -395,6 +454,12 @@ The compiled guest component's import (old interface identity + old `input` shap
 
 **Status:** confirmed limit exists; failure-mode detail still open.
 
+**Update, 2026-09-23 — the open question is answered, and the number was wrong.** The actual
+limit is **255 characters**, not 500, confirmed directly by Betty Blocks Product. Exceeding it
+rejects the `CreateActionStep` database write outright (generic HTTP 500, no field-specific
+error) rather than truncating silently. See `product-feedback-log.md`'s resolved entry for the
+full investigation that pinned this down.
+
 ---
 
 ## `wkg wit fetch` must run before `wit-bindgen` can see a local `external/*.wit` override (2026-08-07)
@@ -465,7 +530,19 @@ The compiled guest component's import (old interface identity + old `input` shap
 
 **Status:** confirmed directly, first-hand, via a single-variable test.
 
-**Update, 2026-09-24 — narrower than originally stated: confirmed only for the wizard-upload path, not `bb functions publish`.** `exchange-code-for-tokens` (`wasm-blocks-store/functions/exchange-code-for-tokens/1.0/`) declares `world main` with a real host import (`wasi:http/outgoing-handler@0.2.6`) — the exact shape this entry says fails — and has worked reliably on canvas since 2026-09-02, published via `bb functions publish` (CLI), not the app's "Add custom Wasm step" wizard. The original comparison (`create-record` failing vs. `store-file-base64` working) was run entirely through the wizard-upload path, so it's still solid evidence *for that path* — but it doesn't establish the rule for CLI-published components, and this is a live counterexample there. Most likely explanation: wizard-uploaded and CLI-published components go through different registration paths on the platform (consistent with other entries in `product-feedback-log.md` showing CLI-publish and wizard-upload behaving differently for the same component). Not rigorously tested either way — treat "avoid `world main` with imports" as confirmed for wizard uploads only until someone actually retests the CLI-publish path deliberately.
+**Update, 2026-09-24 — this rule is doubtful; likely coincidental, not a real mechanism.**
+`exchange-code-for-tokens` (`wasm-blocks-store/functions/exchange-code-for-tokens/1.0/`) declares
+`world main` with a real host import (`wasi:http/outgoing-handler@0.2.6`) — the exact shape this
+entry says fails — and has worked reliably on canvas since 2026-09-02. More importantly: this
+repo's own `product-feedback-log.md` (the `slugify-text`/`make-slug` elimination chain) already
+established that renaming a component's WIT **world** produces a **byte-for-byte identical**
+compiled `.wasm` (confirmed via `git hash-object`) — the world's name isn't embedded in the
+compiled artifact at all. If it isn't in the binary, it cannot be what the platform reads to
+decide success or failure, on *any* upload path. The original `create-record`/`store-file-base64`
+comparison was real, but the actual variable was most likely something else entirely — quite
+possibly the same 255-character `description` limit or registration-lineage-shaped issue
+documented elsewhere in these logs, not the world's name. Treat "rename the world away from
+`main`" as a workaround that happened to work once, not a confirmed causal rule.
 
 ---
 
@@ -536,47 +613,3 @@ This also explains `block-store-action-functions` (BB's own bundle of many Actio
 
 ---
 
-## Dragging a Wasm step onto canvas writes to the database — and any DB text column has a 255-character limit that isn't reliably front-end validated (2026-09-23)
-
-**Fact, confirmed by Betty Blocks Product:** adding a step to an action canvas isn't a purely client-side/preview action — it performs a database write (`CreateActionStep`). If any `function.json` text field ends up in a DB column longer than that column's max (255 characters, confirmed for `description`), the write is rejected. This surfaces only as a generic HTTP 500 with no field-specific error — indistinguishable from a real code bug.
-
-**Practical rule:** keep every `function.json` text field (`description`; worth checking `label` and option `info`/`label` text too) under 255 characters, and don't rely on front-end validation to catch a violation — it doesn't always. Check lengths before publishing.
-
-**Status:** confirmed directly, fix verified live, 2026-09-23.
-
----
-
-## `anyOf`/`schemaModel`-typed `Object` outputs only bind correctly if the WIT field uses a named type alias, not a bare `string` (2026-09-24)
-
-**Fact, confirmed live:** for a custom Wasm step's `Object`-typed output (via `function.json`'s
-`"anyOf": [..., {"type": "Object", "schemaModel": "..."}]`, matching the native HTTP step's own
-pattern) to actually bind individual fields correctly on canvas (`output.someField` resolving to
-that field's real value, not the whole raw string), the underlying WIT record field must be typed
-as a **named type alias** (e.g. `type json-string = string; record r { claims: json-string }`),
-not a bare, unaliased `string` (`record r { claims: string }`). Both compile to the exact same
-`string` at the actual wasm ABI level — the alias makes zero difference to the bytes on the wire —
-but the platform apparently reads the component's own embedded WIT type metadata (not just
-`function.json`) when deciding how to treat an output field. A bare `string` gets treated as plain
-text with no parsing; a field typed via a named alias gets recognized and JSON-parsed for real
-field-level binding.
-
-**How this was found:** `inspect-id-token`'s `claims` output kept showing as a raw JSON-text string
-on canvas — visible in the log panel, and confirmed for real via a downstream Create-record step
-failing validation because schema-bound fields (`claims.name`, `claims.preferred_username`) were
-empty. The native HTTP step's own `Response as: Object` binding was confirmed working end-to-end
-(built a real record using a bound field from a live HTTP call) as the control. Every other avenue
-was ruled out first: `function.json` was verified byte-identical to HTTP's own pattern; the Rust
-code was rewritten to literally mirror HTTP's parse/stringify idiom; pretty vs. compact JSON
-formatting made no difference; an explicit `is_object()` check confirmed the Rust-side parsing was
-already correct. The only thing left unchecked was the WIT file itself — HTTP declares
-`type json-string = string;` and uses that alias for its output field; `inspect-id-token` used a
-bare `string`. Renaming to match fixed it immediately.
-
-**Practical rule:** when a custom Wasm step declares an `Object`/`Array`-typed output via
-`anyOf`/`schemaModel` (the pattern copied from native steps like HTTP), the WIT field backing that
-output must use a named type alias, not a bare primitive type — copy the alias, not just the
-record/function shape, when replicating this pattern for a new step.
-
-**Status:** confirmed directly, fix verified live, 2026-09-24.
-
----

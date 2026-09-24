@@ -1,5 +1,5 @@
 {
-  "description": "Exchanges an OAuth 2.0/OpenID Connect authorization code for tokens at the identity provider's token endpoint. Works with any provider (POSTs a standard application/x-www-form-urlencoded authorization_code grant) — Microsoft Entra, Google, Auth0, etc.",
+  "description": "Exchanges an OAuth 2.0/OpenID Connect authorization code for tokens at the identity provider's token endpoint. Works with any provider — Microsoft Entra, Google, Auth0, etc.",
   "label": "Exchange Code for Tokens",
   "category": "Authentication",
   "icon": {

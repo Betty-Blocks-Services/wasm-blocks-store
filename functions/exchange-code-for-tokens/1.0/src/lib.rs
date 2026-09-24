@@ -59,6 +59,12 @@ impl exchange_code_for_tokens::Guest for ExchangeCodeForTokens {
         code: String,
         redirect_uri: String,
     ) -> Result<TokenResponse, String> {
+        if !token_endpoint.starts_with("https://") {
+            return Err(String::from(
+                "\"Token Endpoint\" must start with https:// — sending the client secret over plain HTTP is not safe",
+            ));
+        }
+
         let body = build_form_body(&client_id, &client_secret, &code, &redirect_uri);
 
         let response = Client::new()
@@ -144,5 +150,21 @@ mod tests {
     fn oauth_error_message_falls_back_to_raw_body() {
         let body = serde_json::Value::Null;
         assert_eq!(oauth_error_message(&body, "not json"), "not json");
+    }
+
+    #[test]
+    fn rejects_a_non_https_token_endpoint() {
+        use exchange_code_for_tokens::Guest;
+
+        let error = ExchangeCodeForTokens::exchange_code_for_tokens(
+            String::from("http://token.example/token"),
+            String::from("client-id"),
+            String::from("client-secret"),
+            String::from("code"),
+            String::from("https://app.example/cb"),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("https://"), "error was: {error}");
     }
 }

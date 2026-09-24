@@ -92,17 +92,12 @@ It publishes every function in the project in one pass.
 
 ## Status (2026-09-24)
 
-Knowledge base in `docs/` is live and current. Two steps for a generic OpenID Connect SSO flow
-are built, tested, and confirmed working live on a real canvas — but **not yet committed/merged**
-(branch `feat/openid-connect-sso-steps`, staged locally only, per `CONTRIBUTING.md`'s
-"canvas-verified before PR" rule):
+Two steps for a generic OpenID Connect SSO login flow, canvas-verified end to end against a real
+Microsoft Entra tenant (full login round-trip, `claims` bound via a typed Schema Model to
+Create/Update a Webuser, `Authenticate User` completing the login):
 
-- `functions/exchange-code-for-tokens/1.0/` — done, working, no open questions.
-- `functions/inspect-id-token/1.0/` — decodes an ID token, checks `iss`/`aud`. Confirmed working
-  on canvas after a long false start (see `docs/product-feedback-log.md`'s resolved entry — a
-  `function.json` `description` over 255 characters was silently rejected by the platform, nothing
-  to do with our code). Currently open: getting the `claims` output's `SchemaModel`/`Object`
-  binding to actually resolve individual fields on canvas — see `genius-sso-test/HANDOVER.md` for
-  the live debugging state.
+- `functions/exchange-code-for-tokens/1.0/` — exchanges an authorization code for tokens.
+- `functions/inspect-id-token/1.0/` — decodes an ID token and checks its `iss`/`aud` claims. See
+  [`docs/oidc-sso-setup.md`](docs/oidc-sso-setup.md) for setup guidance.
 
 See `docs/product-feedback-log.md` and `docs/developer-learnings-log.md` for the full history.

@@ -36,10 +36,7 @@ fn decode_payload(id_token: &str) -> Result<(serde_json::Value, String), String>
     let claims: serde_json::Value = serde_json::from_str(&decoded_text)
         .map_err(|error| format!("id-token payload is not valid JSON: {error}"))?;
 
-    // A JWT payload must always be a JSON object per spec — unlike an HTTP response body,
-    // there's no legitimate case where this should be anything else. Erroring loudly here
-    // (rather than silently accepting a non-object) proves, one way or the other, whether
-    // decoding/parsing is where a "claims ends up as a plain string" problem originates.
+    // A JWT payload must always be a JSON object per RFC 7519 — reject anything else.
     if !claims.is_object() {
         return Err(format!(
             "id-token payload decoded to valid JSON but not a JSON object (got: {claims})"
@@ -49,11 +46,11 @@ fn decode_payload(id_token: &str) -> Result<(serde_json::Value, String), String>
     Ok((claims, decoded_text))
 }
 
-// Claim comparisons are case-insensitive: values like a tenant GUID or issuer URL are usually
-// copy-pasted or hand-typed into a canvas configuration field, where a casing slip is a realistic
-// mistake that shouldn't reject an otherwise-legitimate token.
+// Exact match, per OIDC Core §3.1.3.7 — iss/aud are opaque strings, not URLs to be normalized.
+// A casing mismatch means the configured value doesn't match what the provider actually issues;
+// that's a real misconfiguration and should fail loudly, not be silently tolerated.
 fn claim_equals(actual: &str, expected: &str) -> bool {
-    actual.eq_ignore_ascii_case(expected)
+    actual == expected
 }
 
 fn audience_matches(claims: &serde_json::Value, expected_audience: &str) -> bool {
