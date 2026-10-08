@@ -64,7 +64,7 @@
       },
       "name": "take",
       "label": "Take",
-      "info": "How many records to retrieve at most. Empty or 0 means 200."
+      "info": "How many records to retrieve at most, up to 5000. Empty or 0 means 200. The Data API returns 200 records per request, so a higher number is fetched in several requests (each one counts towards the Data API rate limit)."
     },
     {
       "meta": {

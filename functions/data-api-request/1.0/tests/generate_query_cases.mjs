@@ -20,7 +20,6 @@ const variants = [
   { sortField: "name", sortOrder: "DESC" },
   { take: 50, skip: 10 },
   { take: 0 },
-  { take: 9999 },
   { filter: "name: { eq: \"{{name}}\" }, id: { in: [{{ids}} ] } ", filterVariables: [{ key: "name", value: "Jan" }, { key: "ids", value: [1, 2, 3] }] },
   { type: "record", queryData: "id\n  name\n  company { id name }", model: { name: "Task" } },
 ];

@@ -16,7 +16,7 @@ that updates each record; the take limit is still being verified.
 | Model, Type | Start from one record (`one<Model>`) or a collection (`all<Model>`) |
 | Filter | Data API filter without outer braces, e.g. `id: { eq: {{id}} }`. `{{name}}` inserts a value from Variables. Quote text values yourself: `name: { eq: "{{name}}" }` |
 | Variables | Map of values for `{{name}}` in the filter |
-| Skip, Take | Take defaults to 200 when empty or 0 and is capped at 5000 (the ActionsJS limit, not verified against the server) |
+| Skip, Take | Take defaults to 200 when empty or 0 and is at most 5000. The Data API returns at most 200 records per request (a higher `take` is rejected), so a Take above 200 is fetched in several requests of 200 using Skip, and returned as one list |
 | Sort order, Sort field | Sorting is only added when a sort field is given |
 | Query data | The properties and relations to retrieve, e.g. `name company { id name }`. The record's `id` is always added (see below) |
 | Schema model | Only used when the Result is bound as an Object or Array, to type its fields. Ignored for Record, Collection, Text and Number |
@@ -33,6 +33,7 @@ The step covers the same use cases. Where it differs on purpose:
 - **Readable errors for bracket mistakes.** Unbalanced `{ }`, `[ ]` or `( )` in the filter or the
   query data are reported before anything is sent. A filter wrapped in one pair of outer braces is
   accepted and unwrapped.
+- **Take above 200 works by paging.** The Data API rejects a `take` above 200. The step fetches collection results in batches of 200 (up to 25 requests for 5000 records) and returns them as one list; it stops early when the data runs out. Every request counts towards the Data API read-rate limit. For a record or the total count Take has no effect.
 - **`sortField` is optional**, and **Query data** may not be empty unless only the total count is
   requested.
 - **Templating** is a Rust port of the `templayed.js` subset the ActionsJS step used (`{{x}}`

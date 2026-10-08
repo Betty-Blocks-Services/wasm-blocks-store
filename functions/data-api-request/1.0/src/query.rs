@@ -7,8 +7,11 @@ use crate::template;
 
 /// Used when `take` is empty or 0, like the ActionsJS step.
 pub const DEFAULT_TAKE: u32 = 200;
-/// The ActionsJS step capped `take` at 5000. No Data API document states a real server-side
-/// limit; this is checked on a canvas (see the plan's take-limit probe) before it is trusted.
+/// The most records the Data API returns per request: a `take` above this is rejected as an
+/// unsupported request.
+pub const PAGE_SIZE: u32 = 200;
+/// The most records one step run returns, as in the ActionsJS step. A `take` above `PAGE_SIZE` is
+/// fetched in several requests of `PAGE_SIZE` using `skip`.
 pub const MAX_TAKE: u32 = 5000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +95,25 @@ pub struct BuiltQuery {
     pub field: String,
 }
 
+/// How many records the step returns at most: `take`, 200 when empty or 0, capped at `MAX_TAKE`.
+pub fn requested_take(params: &Params) -> u32 {
+    match params.take {
+        None | Some(0) => DEFAULT_TAKE,
+        Some(take) => take.min(MAX_TAKE),
+    }
+}
+
+/// The query for the first (or only) request: at most `PAGE_SIZE` records.
 pub fn build_query(params: &Params) -> Result<BuiltQuery, String> {
+    build_page(
+        params,
+        params.skip.unwrap_or(0),
+        requested_take(params).min(PAGE_SIZE),
+    )
+}
+
+/// The query for one request that skips `skip` records and takes `take` (at most `PAGE_SIZE`).
+fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, String> {
     let model_name = params.model_name.trim();
     if model_name.is_empty() {
         return Err(String::from("Select a model"));
@@ -129,11 +150,6 @@ pub fn build_query(params: &Params) -> Result<BuiltQuery, String> {
 
     let filter = template::render(params.filter.unwrap_or_default(), params.variables)?;
     let filter = normalize_filter(&filter)?;
-    let skip = params.skip.unwrap_or(0);
-    let take = match params.take {
-        None | Some(0) => DEFAULT_TAKE,
-        Some(take) => take.min(MAX_TAKE),
-    };
     let sort = match params
         .sort_field
         .map(str::trim)
@@ -322,13 +338,50 @@ pub fn extract_result(
 }
 
 /// Builds the query, sends it with `send`, and returns the requested value as JSON text.
+///
+/// The Data API returns at most `PAGE_SIZE` records per request, so a collection of results with
+/// a larger `take` is fetched page by page (`skip` moves on by one page each time) and returned
+/// as one list. It stops early when a page comes back with fewer records than asked for.
 pub fn run(
     params: &Params,
-    send: impl FnOnce(&str) -> Result<String, String>,
+    mut send: impl FnMut(&str) -> Result<String, String>,
 ) -> Result<String, String> {
+    let mut send_query =
+        |built: &BuiltQuery| send(&built.query).map_err(|error| host_error_message(&error));
+
     let built = build_query(params)?;
-    let response = send(&built.query).map_err(|error| host_error_message(&error))?;
-    extract_result(&response, &built, params)
+    let response = send_query(&built)?;
+    let first = extract_result(&response, &built, params)?;
+
+    let paged =
+        params.query_type == QueryType::Collection && params.output_type == OutputType::Results;
+    let total = requested_take(params);
+    if !paged || total <= PAGE_SIZE {
+        return Ok(first);
+    }
+
+    let mut records = into_list(&first)?;
+    let start = params.skip.unwrap_or(0);
+    // The first request asked for a full page. Keep going while pages come back full.
+    let mut last_page_was_full = records.len() as u32 == PAGE_SIZE;
+    while last_page_was_full && (records.len() as u32) < total {
+        let skip = start + records.len() as u32;
+        let page_take = PAGE_SIZE.min(total - records.len() as u32);
+        let built = build_page(params, skip, page_take)?;
+        let response = send_query(&built)?;
+        let page = into_list(&extract_result(&response, &built, params)?)?;
+        last_page_was_full = page.len() as u32 == page_take;
+        records.extend(page);
+    }
+
+    serde_json::to_string(&records).map_err(|error| error.to_string())
+}
+
+fn into_list(json: &str) -> Result<Vec<Value>, String> {
+    match serde_json::from_str(json) {
+        Ok(Value::Array(items)) => Ok(items),
+        _ => Err(String::from("The Data API results are not a list")),
+    }
 }
 
 #[cfg(test)]
@@ -408,14 +461,15 @@ mod tests {
     }
 
     #[test]
-    fn take_defaults_to_200_and_is_capped() {
+    fn the_first_request_takes_at_most_200() {
         let vars = json!({});
         let mut p = params(&vars);
         for (take, expected) in [
             (None, 200),
             (Some(0), 200),
             (Some(50), 50),
-            (Some(9999), 5000),
+            (Some(300), 200),
+            (Some(9999), 200),
         ] {
             p.take = take;
             assert!(
@@ -457,6 +511,155 @@ mod tests {
         assert!(OutputType::parse("count").is_err());
         assert_eq!(SortOrder::parse("").unwrap(), SortOrder::Asc);
         assert!(SortOrder::parse("up").is_err());
+    }
+
+    type ReceivedQueries = std::rc::Rc<std::cell::RefCell<Vec<String>>>;
+
+    /// A fake Data API with `count` records (ids 1..=count) that answers `skip`/`take` queries like
+    /// the real one, including rejecting a `take` above 200. Returns the queries it received.
+    fn fake_data_api(count: u32) -> (impl FnMut(&str) -> Result<String, String>, ReceivedQueries) {
+        let received = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = received.clone();
+        let send = move |query: &str| {
+            log.borrow_mut().push(squash(query));
+            let number_after = |label: &str| -> u32 {
+                let rest = &query[query.find(label).unwrap() + label.len()..];
+                rest.trim_start()
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+                    .parse()
+                    .unwrap()
+            };
+            let (skip, take) = (number_after("skip:"), number_after("take:"));
+            if take > 200 {
+                return Err(String::from("unsupported request"));
+            }
+            let results: Vec<Value> = (skip + 1..=count.min(skip + take))
+                .map(|id| json!({ "id": id }))
+                .collect();
+            Ok(json!({ "data": { "allWebuser": { "results": results } } }).to_string())
+        };
+        (send, received)
+    }
+
+    fn ids(json: &str) -> Vec<u64> {
+        serde_json::from_str::<Vec<Value>>(json)
+            .unwrap()
+            .iter()
+            .map(|record| record["id"].as_u64().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn a_take_above_200_is_fetched_in_pages_of_200() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(450);
+        let (send, received) = fake_data_api(1000);
+        let result = run(&p, send).unwrap();
+
+        assert_eq!(ids(&result), (1..=450).collect::<Vec<_>>());
+        let queries = received.borrow();
+        assert_eq!(queries.len(), 3);
+        assert!(queries[0].contains("skip: 0, take: 200"), "{}", queries[0]);
+        assert!(
+            queries[1].contains("skip: 200, take: 200"),
+            "{}",
+            queries[1]
+        );
+        assert!(queries[2].contains("skip: 400, take: 50"), "{}", queries[2]);
+    }
+
+    #[test]
+    fn paging_starts_at_the_given_skip() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.skip = Some(30);
+        p.take = Some(300);
+        let (send, received) = fake_data_api(1000);
+        let result = run(&p, send).unwrap();
+
+        assert_eq!(ids(&result), (31..=330).collect::<Vec<_>>());
+        let queries = received.borrow();
+        assert!(queries[0].contains("skip: 30, take: 200"), "{}", queries[0]);
+        assert!(
+            queries[1].contains("skip: 230, take: 100"),
+            "{}",
+            queries[1]
+        );
+    }
+
+    #[test]
+    fn paging_stops_when_the_data_runs_out() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(1000);
+        let (send, received) = fake_data_api(250);
+        assert_eq!(ids(&run(&p, send).unwrap()).len(), 250);
+        assert_eq!(received.borrow().len(), 2);
+
+        // Exactly a multiple of the page size: one extra, empty request to find out.
+        let (send, received) = fake_data_api(400);
+        assert_eq!(ids(&run(&p, send).unwrap()).len(), 400);
+        assert_eq!(received.borrow().len(), 3);
+    }
+
+    #[test]
+    fn up_to_200_records_take_a_single_request() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        for take in [None, Some(0), Some(1), Some(200)] {
+            p.take = take;
+            let (send, received) = fake_data_api(1000);
+            let result = run(&p, send).unwrap();
+            assert_eq!(
+                ids(&result).len(),
+                take.filter(|t| *t > 0).unwrap_or(200) as usize
+            );
+            assert_eq!(received.borrow().len(), 1);
+        }
+    }
+
+    #[test]
+    fn take_is_capped_at_5000_records_in_25_requests() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(99_999);
+        let (send, received) = fake_data_api(100_000);
+        assert_eq!(ids(&run(&p, send).unwrap()).len(), 5000);
+        assert_eq!(received.borrow().len(), 25);
+    }
+
+    #[test]
+    fn total_count_and_records_never_ask_for_more_than_200() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(5000);
+        p.output_type = OutputType::TotalCount;
+        let built = build_query(&p).unwrap();
+        assert!(built.query.contains("take: 200"), "{}", built.query);
+        p.query_type = QueryType::Record;
+        assert!(build_query(&p).unwrap().query.contains("take: 200"));
+    }
+
+    #[test]
+    fn an_error_on_a_later_page_fails_the_step() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(500);
+        let mut calls = 0;
+        let error = run(&p, |_| {
+            calls += 1;
+            if calls == 1 {
+                let results: Vec<Value> = (1..=200).map(|id| json!({ "id": id })).collect();
+                Ok(json!({ "data": { "allWebuser": { "results": results } } }).to_string())
+            } else {
+                Err(String::from(r#"{"errors":[{"message":"timeout"}]}"#))
+            }
+        })
+        .unwrap_err();
+        assert_eq!(error, "timeout");
     }
 
     fn run_with(response: &str, p: &Params) -> Result<String, String> {

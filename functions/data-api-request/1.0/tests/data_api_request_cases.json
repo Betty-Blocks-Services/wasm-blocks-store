@@ -82,19 +82,6 @@
   {
     "model": "Webuser",
     "queryType": "collection",
-    "filter": null,
-    "variables": {},
-    "skip": null,
-    "take": 9999,
-    "sortOrder": "ASC",
-    "sortField": null,
-    "queryData": "id name",
-    "outputType": "results",
-    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 5000) { results { id name } } }"
-  },
-  {
-    "model": "Webuser",
-    "queryType": "collection",
     "filter": "name: { eq: \"{{name}}\" }, id: { in: [{{ids}} ] } ",
     "variables": {
       "name": "Jan",
