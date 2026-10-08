@@ -134,13 +134,15 @@
             { "type": "Text" },
             { "type": "Number" },
             { "type": "Object", "schemaModel": "schema-model" },
-            { "type": "Array", "schemaModel": "schema-model", "dataType": "SCHEMA" }
+            { "type": "Array", "schemaModel": "schema-model", "dataType": "SCHEMA" },
+            { "type": "Record", "model": "model" },
+            { "type": "Collection", "model": "model" }
           ]
         }
       },
       "name": "result",
       "label": "Result",
-      "info": "The retrieved record (Object), the list of records (Array) or the total count (Number)."
+      "info": "The retrieved record (Object or Record), the list of records (Array or Collection) or the total count (Number)."
     }
   ],
   "yields": "NONE"

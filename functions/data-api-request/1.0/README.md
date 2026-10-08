@@ -6,8 +6,8 @@ It builds a Data API query from a model, a record/collection type, a filter, pag
 sorting, sends it through the host `betty-blocks-types:data-api` interface (the WASM counterpart of
 the ActionsJS `gql` helper), and returns the record, the list of records or the total count.
 
-**Status:** works against the Data API in a test app; the take limit and output typing are still
-being verified, see below.
+**Status:** works against the Data API in a test app, including a collection result used in a loop
+that updates each record; the take limit is still being verified.
 
 ## Options
 
@@ -20,7 +20,7 @@ being verified, see below.
 | Sort order, Sort field | Sorting is only added when a sort field is given |
 | Query data | The properties and relations to retrieve, e.g. `id name company { id name }` |
 | Output type | `results` or `totalCount` for a collection; ignored for a record |
-| Result | Object (record), Array (collection results) or Number (total count) |
+| Result | Record or Object (one record), Collection or Array (the records) or Number (total count). Bind it as a Collection of the selected model to use the records in steps that need a collection, e.g. a loop that updates each one. The properties in Query data have to exist on that model. |
 
 ## Differences from the ActionsJS step
 
@@ -46,7 +46,6 @@ The step covers the same use cases. Where it differs on purpose:
     the characters of a string);
   - an unclosed or unmatched section is reported as an error.
 - Option names are kebab-case (`filter-variables`, `sort-order`, ...) to match the WIT parameters.
-- The Result output no longer offers Record and Collection.
 
 Values are put into the query as text, as in the ActionsJS step: a text value containing a quote
 can change the query. Do not insert untrusted input into a filter.
