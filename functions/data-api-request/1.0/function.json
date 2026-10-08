@@ -121,7 +121,7 @@
       },
       "name": "schema-model",
       "label": "Schema Model",
-      "info": "The schema model can be used to type the result when it is an object or an array of objects."
+      "info": "Only used when the Result is bound as an Object or Array, to type its fields. Ignored for Record, Collection, Text and Number. For records of the selected model, bind the Result as a Record or Collection instead."
     },
     {
       "meta": {

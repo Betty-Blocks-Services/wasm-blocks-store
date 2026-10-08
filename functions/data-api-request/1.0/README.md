@@ -19,6 +19,7 @@ that updates each record; the take limit is still being verified.
 | Skip, Take | Take defaults to 200 when empty or 0 and is capped at 5000 (the ActionsJS limit, not verified against the server) |
 | Sort order, Sort field | Sorting is only added when a sort field is given |
 | Query data | The properties and relations to retrieve, e.g. `name company { id name }`. The record's `id` is always added (see below) |
+| Schema model | Only used when the Result is bound as an Object or Array, to type its fields. Ignored for Record, Collection, Text and Number |
 | Output type | `results` or `totalCount` for a collection; ignored for a record |
 | Result | Record or Object (one record), Collection or Array (the records) or Number (total count). Bind it as a Collection of the selected model to use the records in steps that need a collection, e.g. a loop that updates each one. The properties in Query data have to exist on that model. |
 
