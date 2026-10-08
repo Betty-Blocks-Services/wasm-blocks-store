@@ -112,13 +112,21 @@ pub fn build_query(params: &Params) -> Result<BuiltQuery, String> {
         ));
     }
 
+    check_balanced("Query data", query_data)?;
+
+    // Later steps (an update, a loop, ...) find a record by its id, so the id is always selected.
+    let query_data = if needs_query_data && !selects_id(query_data) {
+        format!("id {query_data}")
+    } else {
+        query_data.to_string()
+    };
+
     let body = match (params.query_type, params.output_type) {
-        (QueryType::Record, _) => query_data.to_string(),
+        (QueryType::Record, _) => query_data,
         (QueryType::Collection, OutputType::Results) => format!("results {{ {query_data} }}"),
         (QueryType::Collection, OutputType::TotalCount) => String::from("totalCount"),
     };
 
-    check_balanced("Query data", query_data)?;
     let filter = template::render(params.filter.unwrap_or_default(), params.variables)?;
     let filter = normalize_filter(&filter)?;
     let skip = params.skip.unwrap_or(0);
@@ -143,6 +151,46 @@ pub fn build_query(params: &Params) -> Result<BuiltQuery, String> {
     );
 
     Ok(BuiltQuery { query, field })
+}
+
+/// Whether a selection like `id name company { id }` selects `id` at its top level (an `id`
+/// inside a relation or an argument does not count).
+fn selects_id(selection: &str) -> bool {
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut word = String::new();
+    let mut top_level_words = Vec::new();
+
+    for character in selection.chars() {
+        if in_string {
+            match character {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        if depth == 0 && (character.is_alphanumeric() || character == '_') {
+            word.push(character);
+            continue;
+        }
+        if !word.is_empty() {
+            top_level_words.push(std::mem::take(&mut word));
+        }
+        match character {
+            '"' => in_string = true,
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    if !word.is_empty() {
+        top_level_words.push(word);
+    }
+
+    top_level_words.iter().any(|word| word == "id")
 }
 
 /// How deep the brackets nest at each point of `text`, ignoring anything inside double-quoted
@@ -498,6 +546,75 @@ mod tests {
         p.query_data = None;
         let result = run(&p, |_| panic!("must not be sent"));
         assert!(result.is_err());
+    }
+
+    fn selection_of(query_type: QueryType, output_type: OutputType, query_data: &str) -> String {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.query_type = query_type;
+        p.output_type = output_type;
+        p.query_data = Some(query_data);
+        squash(&build_query(&p).unwrap().query)
+    }
+
+    #[test]
+    fn id_is_added_to_the_selection_when_missing() {
+        assert!(
+            selection_of(QueryType::Collection, OutputType::Results, "email name")
+                .ends_with("{ results { id email name } } }")
+        );
+        assert!(
+            selection_of(QueryType::Record, OutputType::Results, "email")
+                .ends_with("{ id email } }")
+        );
+    }
+
+    #[test]
+    fn id_is_not_added_twice_or_when_selected_anywhere_at_the_top_level() {
+        for selection in [
+            "id name",
+            "name id",
+            "name, id",
+            "name\n id\n company { name }",
+        ] {
+            let query = selection_of(QueryType::Collection, OutputType::Results, selection);
+            assert!(
+                query.contains(&format!("results {{ {} }}", squash(selection))),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_id_inside_a_relation_does_not_count_as_the_top_level_id() {
+        let query = selection_of(
+            QueryType::Collection,
+            OutputType::Results,
+            "name company { id name }",
+        );
+        assert!(
+            query.contains("results { id name company { id name } }"),
+            "{query}"
+        );
+    }
+
+    #[test]
+    fn names_that_merely_contain_id_do_not_count() {
+        let query = selection_of(
+            QueryType::Collection,
+            OutputType::Results,
+            "identifier user_id",
+        );
+        assert!(
+            query.contains("results { id identifier user_id }"),
+            "{query}"
+        );
+    }
+
+    #[test]
+    fn total_count_does_not_get_an_id() {
+        let query = selection_of(QueryType::Collection, OutputType::TotalCount, "name");
+        assert!(query.ends_with("{ totalCount } }"), "{query}");
     }
 
     fn filter_clause(filter: &str) -> Result<String, String> {

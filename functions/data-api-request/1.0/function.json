@@ -97,7 +97,7 @@
       },
       "name": "query-data",
       "label": "Query data",
-      "info": "The properties and relations to retrieve, in Data API syntax, for example: id name company { id name }. Use camelCase for names that contain an underscore. Not needed when you only want the total count."
+      "info": "The properties and relations to retrieve, e.g. name company { id name }. The record's id is always added, because later steps need it to find the record. Add id inside relations yourself. camelCase for names with an underscore."
     },
     {
       "meta": {

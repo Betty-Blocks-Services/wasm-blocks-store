@@ -18,7 +18,7 @@ that updates each record; the take limit is still being verified.
 | Variables | Map of values for `{{name}}` in the filter |
 | Skip, Take | Take defaults to 200 when empty or 0 and is capped at 5000 (the ActionsJS limit, not verified against the server) |
 | Sort order, Sort field | Sorting is only added when a sort field is given |
-| Query data | The properties and relations to retrieve, e.g. `id name company { id name }` |
+| Query data | The properties and relations to retrieve, e.g. `name company { id name }`. The record's `id` is always added (see below) |
 | Output type | `results` or `totalCount` for a collection; ignored for a record |
 | Result | Record or Object (one record), Collection or Array (the records) or Number (total count). Bind it as a Collection of the selected model to use the records in steps that need a collection, e.g. a loop that updates each one. The properties in Query data have to exist on that model. |
 
@@ -45,6 +45,12 @@ The step covers the same use cases. Where it differs on purpose:
   - a section over a non-empty string, object or number renders nothing (templayed iterated over
     the characters of a string);
   - an unclosed or unmatched section is reported as an error.
+- **The `id` is always selected.** Later steps (an update, a loop, ...) find a record by its `id`: without it the
+  result cannot be used as a Record or Collection (an Update step fails with `can't convert undefined to
+  BigInt`). The step adds `id` to the top level of Query data when it is missing, so an Object or Array
+  result now always contains `id`. It does not add `id` inside relations: write `company { id name }`
+  yourself. Only the properties you list are filled in; reading another property of the record later
+  gives an empty value.
 - Option names are kebab-case (`filter-variables`, `sort-order`, ...) to match the WIT parameters.
 
 Values are put into the query as text, as in the ActionsJS step: a text value containing a quote
