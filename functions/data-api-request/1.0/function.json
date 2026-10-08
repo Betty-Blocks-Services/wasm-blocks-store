@@ -1,0 +1,147 @@
+{
+  "description": "Define your own Data API request to retrieve exactly the properties, relations or total count you need from a model.",
+  "label": "Data API Request",
+  "category": "CRUD",
+  "icon": {
+    "name": "DataIcon",
+    "color": "Blue"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model",
+      "label": "Model",
+      "info": "The model to start the query from."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "values": [
+          { "label": "Record", "value": "record" },
+          { "label": "Collection", "value": "collection" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "query-type",
+      "label": "Type",
+      "info": "Whether your query starts at one record or at a collection of records."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "default": ""
+      },
+      "name": "filter",
+      "label": "Filter",
+      "info": "Data API filter, for example: id: { eq: {{id}} }. Use {{name}} to insert a value from Variables. For text values add the quotes yourself: name: { eq: \"{{name}}\" }. Do not add outer curly braces: the step does that."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "filter-variables",
+      "label": "Variables",
+      "info": "The values you can insert in the filter with {{name}}. The Data API cannot handle an empty array in a filter: convert it first, for example with an Expression step."
+    },
+    {
+      "meta": {
+        "type": "Number"
+      },
+      "name": "skip",
+      "label": "Skip",
+      "info": "How many records to skip before the query starts. Any number from 0."
+    },
+    {
+      "meta": {
+        "type": "Number"
+      },
+      "name": "take",
+      "label": "Take",
+      "info": "How many records to retrieve at most. Empty or 0 means 200."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "ASC",
+        "values": [
+          { "label": "Ascending", "value": "ASC" },
+          { "label": "Descending", "value": "DESC" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "sort-order",
+      "label": "Sort order",
+      "info": "The sort direction. Only used when a sort field is filled in."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "default": ""
+      },
+      "name": "sort-field",
+      "label": "Sort field",
+      "info": "The property to sort by. Leave empty for no sorting."
+    },
+    {
+      "meta": {
+        "type": "MultilineText"
+      },
+      "name": "query-data",
+      "label": "Query data",
+      "info": "The properties and relations to retrieve, in Data API syntax, for example: id name company { id name }. Use camelCase for names that contain an underscore. Not needed when you only want the total count."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "results",
+        "values": [
+          { "label": "Results", "value": "results" },
+          { "label": "Total count", "value": "totalCount" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "output-type",
+      "label": "Output type",
+      "info": "For a collection: the records (Results) or how many records match in total (Total count, handy when processing large sets in batches). Ignored for a record."
+    },
+    {
+      "meta": {
+        "type": "SchemaModel"
+      },
+      "name": "schema-model",
+      "label": "Schema Model",
+      "info": "The schema model can be used to type the result when it is an object or an array of objects."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "anyOf": [
+            { "type": "Text" },
+            { "type": "Number" },
+            { "type": "Object", "schemaModel": "schema-model" },
+            { "type": "Array", "schemaModel": "schema-model", "dataType": "SCHEMA" }
+          ]
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "The retrieved record (Object), the list of records (Array) or the total count (Number)."
+    }
+  ],
+  "yields": "NONE"
+}

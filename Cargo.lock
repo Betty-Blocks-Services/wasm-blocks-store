@@ -410,6 +410,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "data-api-request"
+version = "1.0.0"
+dependencies = [
+ "serde_json",
+ "wit-bindgen 0.58.0",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

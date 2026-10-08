@@ -1,0 +1,37 @@
+package betty-blocks:data-api-request@1.0.0;
+
+interface data-api-request {
+    use betty-blocks-types:data-api/data-api@3.0.0.{helper-context};
+    use betty-blocks-types:types/types@3.0.0.{betty-model};
+
+    // A named alias rather than a bare `string`: the platform JSON-parses the value returned
+    // with this type (see the "named type alias" entry in docs/developer-learnings-log.md). Returning non-JSON text from a step
+    // typed like this fails with "JSON.parse: unexpected character".
+    type json-string = string;
+
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `helper-context` is injected by the platform and is not an option.
+    // `query-type` is not called `type` because `type` is a WIT keyword.
+    data-api-request: func(
+        helper-context: helper-context,
+        model: betty-model,
+        query-type: string,
+        filter: option<string>,
+        filter-variables: json-string,
+        skip: option<u32>,
+        take: option<u32>,
+        sort-order: string,
+        sort-field: option<string>,
+        query-data: option<string>,
+        output-type: string,
+        schema-model: option<string>,
+    ) -> result<json-string, string>;
+}
+
+// Deliberately not named `main`: a world named `main` that also imports a host interface fails
+// to be added to the canvas (see docs/developer-learnings-log.md, 2026-08).
+world data-api-request-world {
+    import betty-blocks-types:data-api/data-api@3.0.0;
+
+    export data-api-request;
+}

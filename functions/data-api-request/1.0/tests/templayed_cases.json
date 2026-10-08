@@ -1,0 +1,218 @@
+[
+  {
+    "template": "id: { eq: 1 }",
+    "variables": {},
+    "expected": "id: { eq: 1 }"
+  },
+  {
+    "template": "name: { eq: \"{{name}}\" }, id: { eq: {{ id }} } ",
+    "variables": {
+      "name": "Jan",
+      "id": 7
+    },
+    "expected": "name: { eq: \"Jan\" }, id: { eq: 7 } "
+  },
+  {
+    "template": "id: { eq: {{id}} } ",
+    "variables": {
+      "id": "1"
+    },
+    "expected": "id: { eq: 1 } "
+  },
+  {
+    "template": "a{{nope}}b",
+    "variables": {},
+    "expected": "ab"
+  },
+  {
+    "template": "[{{f}}][{{t}}][{{n}}][{{s}}][{{z}}] ",
+    "variables": {
+      "f": false,
+      "t": true,
+      "n": null,
+      "s": "",
+      "z": 0
+    },
+    "expected": "[false][true][][][0] "
+  },
+  {
+    "template": "{{v}} / {{{v}}} / {{&v}} ",
+    "variables": {
+      "v": "a&b\"c<d>e'f"
+    },
+    "expected": "a&amp;b&quot;c&lt;d&gt;e'f / a&b\"c<d>e'f / a&b\"c<d>e'f "
+  },
+  {
+    "template": "[{{ids}}] [{{mixed}}] [{{empty}}] ",
+    "variables": {
+      "ids": [
+        1,
+        2,
+        3
+      ],
+      "mixed": [
+        1,
+        null,
+        "x",
+        [
+          2,
+          3
+        ],
+        false,
+        true
+      ],
+      "empty": []
+    },
+    "expected": "[1,2,3] [1,,x,2,3,false,true] [] "
+  },
+  {
+    "template": "{{o}} ",
+    "variables": {
+      "o": {
+        "a": 1
+      }
+    },
+    "expected": "[object Object] "
+  },
+  {
+    "template": "{{a}} {{b}} {{c}} {{d}} {{e}} ",
+    "variables": {
+      "a": 1,
+      "b": 1.5,
+      "c": -3,
+      "d": 100000000000,
+      "e": 0.1
+    },
+    "expected": "1 1.5 -3 100000000000 0.1 "
+  },
+  {
+    "template": "a{{! a note }}b ",
+    "variables": {},
+    "expected": "ab "
+  },
+  {
+    "template": "{{#users}}<{{name}}>{{/users}} ",
+    "variables": {
+      "users": [
+        {
+          "name": "a"
+        },
+        {
+          "name": "b"
+        }
+      ]
+    },
+    "expected": "<a><b> "
+  },
+  {
+    "template": "{{#list}}{{.}}{{../sep}}{{/list}} ",
+    "variables": {
+      "list": [
+        1,
+        2
+      ],
+      "sep": "-"
+    },
+    "expected": "1-2- "
+  },
+  {
+    "template": "{{#yes}}A{{/yes}}{{#no}}B{{/no}} ",
+    "variables": {
+      "yes": true,
+      "no": false
+    },
+    "expected": "A "
+  },
+  {
+    "template": "{{^empty}}1{{/empty}}{{^full}}2{{/full}}{{^no}}3{{/no}}{{^yes}}4{{/yes}}{{^missing}}5{{/missing}}{{^zero}}6{{/zero}}{{^blank}}7{{/blank}} ",
+    "variables": {
+      "empty": [],
+      "full": [
+        1
+      ],
+      "no": false,
+      "yes": true,
+      "zero": 0,
+      "blank": ""
+    },
+    "expected": "13567 "
+  },
+  {
+    "template": "{{#rows}}[{{#cells}}{{.}}{{/cells}}]{{/rows}} ",
+    "variables": {
+      "rows": [
+        {
+          "cells": [
+            1,
+            2
+          ]
+        },
+        {
+          "cells": [
+            3
+          ]
+        }
+      ]
+    },
+    "expected": "[12][3] "
+  },
+  {
+    "template": "line one\nline \"two\" {{x}}\nline three ",
+    "variables": {
+      "x": "X"
+    },
+    "expected": "line one\nline \"two\" X\nline three "
+  },
+  {
+    "template": "{ and: [ { id: { in: [{{ids}} ] } }, { name: { eq: \"{{ name }}\" } } ] } ",
+    "variables": {
+      "ids": [
+        4,
+        5,
+        6
+      ],
+      "name": "Jan"
+    },
+    "expected": "{ and: [ { id: { in: [4,5,6 ] } }, { name: { eq: \"Jan\" } } ] } "
+  },
+  {
+    "template": "{{#items}}{{id}}{{^last}},{{/last}}{{/items}} ",
+    "variables": {
+      "items": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2,
+          "last": true
+        }
+      ]
+    },
+    "expected": "1,2 "
+  },
+  {
+    "template": "{{record}} ",
+    "variables": {
+      "record": {
+        "id": 1,
+        "name": "N"
+      }
+    },
+    "expected": "[object Object] "
+  },
+  {
+    "template": "{{#a}}{{#b}}{{.}}{{../c}}{{/b}}{{/a}} ",
+    "variables": {
+      "a": [
+        {
+          "b": [
+            1,
+            2
+          ],
+          "c": "c"
+        }
+      ]
+    },
+    "expected": "1c2c "
+  }
+]
