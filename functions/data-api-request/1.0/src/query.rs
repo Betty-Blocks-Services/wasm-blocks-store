@@ -144,7 +144,7 @@ fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, Strin
 
     let body = match (params.query_type, params.output_type) {
         (QueryType::Record, _) => query_data,
-        (QueryType::Collection, OutputType::Results) => format!("results {{ {query_data} }}"),
+        (QueryType::Collection, OutputType::Results) => format!("results {{ {query_data}\n}}"),
         (QueryType::Collection, OutputType::TotalCount) => String::from("totalCount"),
     };
 
@@ -163,22 +163,28 @@ fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, Strin
     };
 
     let query = format!(
-        "query {{ {field}(where: {{ {filter} }}, skip: {skip}, take: {take}{sort}) {{ {body} }} }}"
+        "query {{ {field}(where: {{ {filter}\n}}, skip: {skip}, take: {take}{sort}) {{ {body}\n}} }}"
     );
 
     Ok(BuiltQuery { query, field })
 }
 
-/// Whether a selection like `id name company { id }` selects `id` at its top level (an `id`
-/// inside a relation or an argument does not count).
-fn selects_id(selection: &str) -> bool {
-    let mut depth = 0i32;
+/// The characters of GraphQL text that are code: not inside a "string" and not inside a `#`
+/// comment (which runs to the end of the line). A string is reported as one space.
+fn code_chars(text: &str) -> Vec<(usize, char)> {
+    let mut chars = Vec::new();
     let mut in_string = false;
     let mut escaped = false;
-    let mut word = String::new();
-    let mut top_level_words = Vec::new();
+    let mut in_comment = false;
 
-    for character in selection.chars() {
+    for (index, character) in text.char_indices() {
+        if in_comment {
+            if character == '\n' {
+                in_comment = false;
+                chars.push((index, character));
+            }
+            continue;
+        }
         if in_string {
             match character {
                 _ if escaped => escaped = false,
@@ -188,6 +194,26 @@ fn selects_id(selection: &str) -> bool {
             }
             continue;
         }
+        match character {
+            '"' => {
+                in_string = true;
+                chars.push((index, ' '));
+            }
+            '#' => in_comment = true,
+            _ => chars.push((index, character)),
+        }
+    }
+    chars
+}
+
+/// Whether a selection like `id name company { id }` selects `id` at its top level (an `id`
+/// inside a relation or an argument does not count).
+fn selects_id(selection: &str) -> bool {
+    let mut depth = 0i32;
+    let mut word = String::new();
+    let mut top_level_words = Vec::new();
+
+    for (_, character) in code_chars(selection) {
         if depth == 0 && (character.is_alphanumeric() || character == '_') {
             word.push(character);
             continue;
@@ -196,7 +222,6 @@ fn selects_id(selection: &str) -> bool {
             top_level_words.push(std::mem::take(&mut word));
         }
         match character {
-            '"' => in_string = true,
             '{' | '[' | '(' => depth += 1,
             '}' | ']' | ')' => depth -= 1,
             _ => {}
@@ -209,51 +234,68 @@ fn selects_id(selection: &str) -> bool {
     top_level_words.iter().any(|word| word == "id")
 }
 
-/// How deep the brackets nest at each point of `text`, ignoring anything inside double-quoted
-/// strings. Returns the depth at the end, or the offending closing character.
-fn bracket_depths(text: &str) -> Result<Vec<(usize, i32)>, char> {
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut depths = Vec::new();
-
-    for (index, character) in text.char_indices() {
-        if in_string {
-            match character {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => in_string = false,
-                _ => {}
-            }
-            continue;
-        }
-        match character {
-            '"' => in_string = true,
-            '{' | '[' | '(' => depth += 1,
-            '}' | ']' | ')' => {
-                depth -= 1;
-                if depth < 0 {
-                    return Err(character);
-                }
-            }
-            _ => {}
-        }
-        depths.push((index, depth));
-    }
-    depths.push((text.len(), depth));
-    Ok(depths)
+enum BracketProblem {
+    /// A closing bracket with nothing open.
+    Unmatched { close: char, at: usize },
+    /// A closing bracket of another kind than the one that is open.
+    Mismatch {
+        close: char,
+        close_at: usize,
+        open: char,
+        open_at: usize,
+    },
+    /// An opening bracket that is never closed.
+    Unclosed { open: char, at: usize },
 }
 
-/// Fails with a readable message when brackets do not pair up, instead of sending the query and
-/// getting the Data API's "syntax error before: '}'".
+fn find_bracket_problem(text: &str) -> Option<BracketProblem> {
+    let mut open: Vec<(char, usize)> = Vec::new();
+
+    for (index, character) in code_chars(text) {
+        match character {
+            '{' | '[' | '(' => open.push((character, index)),
+            '}' | ']' | ')' => match open.pop() {
+                None => {
+                    return Some(BracketProblem::Unmatched {
+                        close: character,
+                        at: index,
+                    });
+                }
+                Some((opener, open_at)) => {
+                    let expected = match opener {
+                        '{' => '}',
+                        '[' => ']',
+                        _ => ')',
+                    };
+                    if character != expected {
+                        return Some(BracketProblem::Mismatch {
+                            close: character,
+                            close_at: index,
+                            open: opener,
+                            open_at,
+                        });
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+    open.pop()
+        .map(|(opener, at)| BracketProblem::Unclosed { open: opener, at })
+}
+
+/// "line 12 (`  organization { name }`)": where a problem is, since the text can be long.
+fn describe_line(text: &str, index: usize) -> String {
+    let line_number = text[..index].matches('\n').count() + 1;
+    let line = text.lines().nth(line_number - 1).unwrap_or_default().trim();
+    let shown: String = line.chars().take(60).collect();
+    let ellipsis = if line.chars().count() > 60 { "..." } else { "" };
+    format!("line {line_number} (`{shown}{ellipsis}`)")
+}
+
+/// Fails with a readable message that points at the line when brackets do not pair up, instead
+/// of sending the query and getting the Data API's "syntax error before: '}'".
 fn check_balanced(label: &str, text: &str) -> Result<(), String> {
-    // Show what the step actually received (after variables were filled in), cut short.
-    let received: String = text.chars().take(80).collect();
-    let received = if text.chars().count() > 80 {
-        format!("{received}...")
-    } else {
-        received
-    };
     let hint = if label == "Filter" {
         " The filter is wrapped in curly braces for you, so write it without outer braces, \
          for example: id: { eq: 1 }."
@@ -261,15 +303,64 @@ fn check_balanced(label: &str, text: &str) -> Result<(), String> {
         ""
     };
 
-    match bracket_depths(text) {
-        Err(closing) => Err(format!(
-            "{label} has a closing `{closing}` without an opening one.{hint} Received: {received}"
+    match find_bracket_problem(text) {
+        None => Ok(()),
+        Some(BracketProblem::Unmatched { close, at }) => Err(format!(
+            "{label} has a closing `{close}` without an opening one on {}.{hint}",
+            describe_line(text, at)
         )),
-        Ok(depths) if depths.last().is_some_and(|(_, depth)| *depth > 0) => Err(format!(
-            "{label} has an opening bracket that is never closed: check the `{{`, `[` and `(` pairs. Received: {received}"
+        Some(BracketProblem::Mismatch {
+            close,
+            close_at,
+            open,
+            open_at,
+        }) => Err(format!(
+            "{label} has a closing `{close}` on {} that does not match the `{open}` opened on {}.{hint}",
+            describe_line(text, close_at),
+            describe_line(text, open_at)
         )),
-        Ok(_) => Ok(()),
+        Some(BracketProblem::Unclosed { open, at }) => Err(format!(
+            "{label} has an opening `{open}` on {} that is never closed.{hint}",
+            describe_line(text, at)
+        )),
     }
+}
+
+/// The text between the outer curly braces if the whole of `text` (ignoring comments and
+/// whitespace) is one `{ ... }` pair, else `None`.
+fn inside_outer_braces(text: &str) -> Option<&str> {
+    let chars = code_chars(text);
+    let mut significant = chars
+        .iter()
+        .filter(|(_, character)| !character.is_whitespace());
+    let &(first_at, first) = significant.next()?;
+    if first != '{' {
+        return None;
+    }
+
+    let mut depth = 0i32;
+    let mut close_at = None;
+    for &(index, character) in chars.iter().filter(|(index, _)| *index >= first_at) {
+        match character {
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_at = Some(index);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close_at = close_at?;
+
+    // Nothing but whitespace and comments may follow the closing brace.
+    let nothing_after = chars
+        .iter()
+        .filter(|(index, _)| *index > close_at)
+        .all(|(_, character)| character.is_whitespace());
+    nothing_after.then(|| text[first_at + 1..close_at].trim())
 }
 
 /// Checks the rendered filter and removes one pair of outer curly braces if the whole filter is
@@ -278,19 +369,7 @@ fn check_balanced(label: &str, text: &str) -> Result<(), String> {
 fn normalize_filter(filter: &str) -> Result<String, String> {
     check_balanced("Filter", filter)?;
     let trimmed = filter.trim();
-
-    if trimmed.starts_with('{') && trimmed.ends_with('}') {
-        let depths = bracket_depths(trimmed).unwrap_or_default();
-        // The opening brace closes at the very end, not earlier (`{ a: 1 } { b: 2 }`).
-        let closes_only_at_end = depths
-            .iter()
-            .take(depths.len().saturating_sub(2))
-            .all(|(_, depth)| *depth > 0);
-        if closes_only_at_end {
-            return Ok(trimmed[1..trimmed.len() - 1].trim().to_string());
-        }
-    }
-    Ok(trimmed.to_string())
+    Ok(inside_outer_braces(trimmed).unwrap_or(trimmed).to_string())
 }
 
 /// The messages of a GraphQL error envelope (`{"errors": [{"message": ...}]}`), if it is one.
@@ -887,7 +966,49 @@ mod tests {
         let error = build_query(&p).unwrap_err();
         assert!(error.starts_with("Query data has a closing `}`"), "{error}");
         assert!(!error.contains("filter"), "{error}");
-        assert!(error.ends_with("Received: id name }"), "{error}");
+        assert!(error.contains("on line 1 (`id name }`)"), "{error}");
+    }
+
+    #[test]
+    fn a_stray_closing_brace_names_its_line() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.query_data = Some("name\n  company { name }\n  email\n}");
+        let error = build_query(&p).unwrap_err();
+        assert!(error.contains("on line 4 (`}`)"), "{error}");
+    }
+
+    #[test]
+    fn graphql_comments_are_understood() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        // Brackets and quotes inside a comment do not count, and an `id` in a comment is not the id.
+        p.query_data =
+            Some("# keep } and \" out of it\n  # the id of the person\n  name\n  company { name }");
+        let query = build_query(&p).unwrap().query;
+        assert!(query.contains("results { id # keep"), "{query}");
+    }
+
+    #[test]
+    fn a_comment_on_the_last_line_does_not_swallow_the_closing_braces() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.query_data = Some("id name # last property");
+        p.filter = Some("id: { eq: 1 } # only one");
+        let query = build_query(&p).unwrap().query;
+        // Every comment is followed by a line break before the next closing brace.
+        assert!(query.contains("# only one\n}"), "{query}");
+        assert!(query.contains("# last property\n}"), "{query}");
+    }
+
+    #[test]
+    fn a_mismatched_bracket_names_both_lines() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.query_data = Some("company { name\n]");
+        let error = build_query(&p).unwrap_err();
+        assert!(error.contains("`]` on line 2"), "{error}");
+        assert!(error.contains("`{` opened on line 1"), "{error}");
     }
 
     #[test]
