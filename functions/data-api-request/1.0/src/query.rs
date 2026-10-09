@@ -247,14 +247,26 @@ fn bracket_depths(text: &str) -> Result<Vec<(usize, i32)>, char> {
 /// Fails with a readable message when brackets do not pair up, instead of sending the query and
 /// getting the Data API's "syntax error before: '}'".
 fn check_balanced(label: &str, text: &str) -> Result<(), String> {
+    // Show what the step actually received (after variables were filled in), cut short.
+    let received: String = text.chars().take(80).collect();
+    let received = if text.chars().count() > 80 {
+        format!("{received}...")
+    } else {
+        received
+    };
+    let hint = if label == "Filter" {
+        " The filter is wrapped in curly braces for you, so write it without outer braces, \
+         for example: id: { eq: 1 }."
+    } else {
+        ""
+    };
+
     match bracket_depths(text) {
         Err(closing) => Err(format!(
-            "{label} has a closing `{closing}` without an opening one. \
-             The filter is wrapped in curly braces for you, so write it without outer braces, \
-             for example: id: {{ eq: 1 }}"
+            "{label} has a closing `{closing}` without an opening one.{hint} Received: {received}"
         )),
         Ok(depths) if depths.last().is_some_and(|(_, depth)| *depth > 0) => Err(format!(
-            "{label} has an opening bracket that is never closed: check the `{{`, `[` and `(` pairs"
+            "{label} has an opening bracket that is never closed: check the `{{`, `[` and `(` pairs. Received: {received}"
         )),
         Ok(_) => Ok(()),
     }
@@ -865,6 +877,17 @@ mod tests {
     fn braces_inside_text_values_do_not_count() {
         let query = filter_clause("name: { eq: \"a } b \\\" {\" }").unwrap();
         assert!(query.contains("name: { eq: \"a } b \\\" {\" }"), "{query}");
+    }
+
+    #[test]
+    fn a_closing_brace_in_query_data_is_reported_without_the_filter_hint() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.query_data = Some("id name }");
+        let error = build_query(&p).unwrap_err();
+        assert!(error.starts_with("Query data has a closing `}`"), "{error}");
+        assert!(!error.contains("filter"), "{error}");
+        assert!(error.ends_with("Received: id name }"), "{error}");
     }
 
     #[test]
