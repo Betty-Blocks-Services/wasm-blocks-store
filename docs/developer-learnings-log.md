@@ -8,6 +8,363 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## Expression step: how it evaluates, how the Variables map works, what fails and why, and proven patterns (2026-10-09)
+
+**Where each part comes from, so you know how far to trust it:**
+
+- **Canvas-tested** (Marcel, October 2026, building an action for an MCP-based search agent; the doc was
+  updated three times, the last adding the backslash/`String.raw` findings): every rule in 4 and the patterns
+  in 5. Error texts are quoted as they appeared.
+- **Source-confirmed** (2026-10-09): the engine, read in
+  [`bettyblocks/native-wasm-components`](https://github.com/bettyblocks/native-wasm-components)
+  `functions/expression/1.0/` (`src/lib.rs`, `includes/templated.js/templayed.js`). Two rules first only
+  inferred from error messages (the prefix rule, the `}}` rule) are confirmed by it.
+- **Replayed locally** (2026-10-09): edge cases marked *(replayed)* were run in Node against the real
+  `templayed.js` with the same wrapper `lib.rs` uses. Node is not QuickJS: same behaviour, but the exact
+  error wording may differ from canvas. These were not run on a real canvas.
+
+### 1. How the step works
+
+The step evaluates one JavaScript **expression** and returns its value. It is a Rust WASM component that
+embeds the QuickJS engine (`rquickjs`) plus [templayed.js](https://github.com/archan937/templayed.js) 0.2.3,
+a small Mustache-style template library. Per call, `lib.rs`:
+
+1. parses the **Variables** map (it arrives as a JSON string) into an object;
+2. **template phase:** runs the Expression text through templayed with that object, replacing every
+   `{{ ... }}` / `{{{ ... }}}` with *text*;
+3. **JavaScript phase:** evaluates `new Function("return " + <resulting text>)()`;
+4. returns the value JSON-stringified (`undefined` becomes `null`).
+
+Everything below follows from that order: values only exist in the template phase, and in the JavaScript
+phase only text is left.
+
+### 2. Getting values in: the Variables map
+
+- Add values to the step's **Variables** map (key → value), e.g. key `data`, value `masterDataResponse`.
+- They can **only** be referenced inside `{{ }}` / `{{{ }}}`. Outside the brackets `data` alone gives
+  `Error: data is not defined` and `vars.data` gives `Error: vars is not defined`.
+- Types survive until the template phase: the map reaches the component as a JSON-object string with typed
+  values (a number stays a number, a record is the full object). The WIT parameter is a plain `json-string`;
+  the key/value table is `function.json`-only (`"type": "Map"`), see `product-feedback-log.md`'s Map-editor
+  entry.
+
+### 3. `{{x}}` vs `{{{x}}}`
+
+| Syntax | Behaviour |
+|---|---|
+| `{{name}}` | Inserts the value **HTML-escaped**: `&` → `&amp;`, `"` → `&quot;`, `<` → `&lt;`, `>` → `&gt;` |
+| `{{{name}}}` | Inserts the value **raw** |
+
+Canvas-tested for `"`; the other three are from the source and *(replayed)*. Use triple brackets whenever
+the value can contain any of them: JSON, GraphQL filter text, URLs with `&`.
+
+### 4. What works and what fails
+
+**4.1 The prefix rule (source-confirmed).** templayed does not parse what is inside the brackets. It treats
+it as a property path and generates `vars[vars.length - 1]` + `.` + *your text*. So **the first identifier
+is always read as a key of the Variables map**, and after it everything is ordinary JavaScript, run in the
+template phase:
+
+| You write | What actually runs | Result |
+|---|---|---|
+| `{{ data.list.map(x => x.id) }}` | `vars[…].data.list.map(x => x.id)` | works |
+| `{{ JSON.stringify(data) }}` | `vars[…].JSON.stringify(data)` | `cannot read property 'stringify' of undefined` |
+| `{{ data \| json }}` | `vars[…].data \| json` | `json is not defined` (no filters; `\|` is bitwise-or) |
+| `{{{ (() => { … })() }}}` | `vars[…].(() => …` | `expecting field name` (syntax error) |
+
+So **start every bracket section with a variable name**, then use normal JavaScript (canvas-confirmed:
+property paths, arrow functions, `.map` / `.reduce` / `.find` / `.join` / `.trim` / `.push`, object and array
+literals, `if`/`else` and `const` inside arrow-function bodies). Anything that doesn't start with a variable
+name (`JSON`, `(`, `Object`, `Math`) fails; do that work *outside* the brackets or inside a lambda after the
+first identifier.
+
+**4.2 Never write `}}` inside the code (source-confirmed, replayed).** A tag ends at the **first `}}`** (the
+pattern is a lazy `\{\{…}}+`). `list.map(x => ({k:{v:x}}))` fails; `list.map(x => ({k:{v:x} }))` works.
+Keep closing braces apart: `} }`, `}); }`.
+
+**4.2b Inside the brackets: single quotes only, one line per section, no backslashes (canvas rule, cause
+source-confirmed and replayed).** Before it looks for tags, templayed escapes the *whole* expression text so
+it can be embedded in a string: every `"` becomes `\"` and every real line break becomes a literal `\n`.
+That also hits the code *inside* the brackets, where those characters are no longer valid JavaScript:
+
+| Inside a bracket | What the code becomes | Result |
+|---|---|---|
+| a double quote, `"v"` | `\"v\"` | syntax error *(replayed)* |
+| a real line break between tokens | a literal `\n` outside any string | syntax error *(replayed)*; the canvas shows it as `unexpected token in expression: '\'` |
+
+So: use **single quotes**, keep each `{{{ ... }}}` **on one line** (a line break *between* two single-line
+brackets is fine), and avoid backslashes. The canvas finding was that `'\n'` worked in one expression and
+failed in another with `Error: unexpected token in expression: '\'`, unchanged after the backtick and `${`
+were rewritten. A `'\n'` that sits inside quotes on a single line replays fine, so the likelier culprit in the
+failing expression is a double quote or line break near it, but that was not proven for that expression.
+Either way the safe habit is the same: use a separator without backslashes, e.g. `.join(' ### ')`.
+`.filter(Boolean)` works inside the brackets (canvas, and *(replayed)*), as long as it isn't the first
+identifier.
+
+**4.3 Missing values.**
+- A **missing top-level key or property** inserts an **empty string**, not the word `null` *(replayed)*. If
+  the whole expression is just that, the result is `null` (`{{ data.map }}` on an object gave `null` on
+  canvas); inside a bigger expression it leaves a hole: `1 + {{missing}}` becomes `1 + `, a syntax error.
+- A **missing nested property** throws: `Error: cannot read property 'results' of undefined`. Check the
+  nesting. A GraphQL response stored in a variable usually has its own `data` level, so the path becomes
+  `data.data.<alias>.results`.
+
+**4.4 Objects become `[object Object]`.** Every inserted value is converted to text, so `{{{data}}}` on an
+object gives `[object Object]`. Do the object work **inside** the brackets (4.1) and return a string; you
+can't `JSON.stringify` the variable in the template phase because of the prefix rule.
+
+**4.5 JavaScript outside the brackets.** Plain JavaScript with the `JSON` global (canvas-confirmed:
+`JSON.stringify(...)`, `.slice()`). The inserted text is **pasted into the source**, so wrap it in backticks
+to make it a string literal: `` `{{{filters}}}` ``. Without backticks it is read as code and usually fails
+(`testing is not defined` for a plain string value, which is in the component's own tests). Caveats
+*(replayed)*:
+
+- A value containing a **backtick** breaks the expression; one containing **`${…}`** is *evaluated*
+  (`x${1+1}y` becomes `x2y`), so it is a code-injection point if the value is untrusted.
+- A **backslash** in the text outside the brackets is interpreted by the template phase first: `'a\nb'` has a
+  real newline in it by the time the JavaScript phase sees it, and fails. Backslashes *inside* the brackets:
+  see 4.2b.
+- **Backslashes in the inserted data** also matter, once the text lands in backticks: a `\u` or `\x` in free
+  text is read as an escape and causes a syntax error (`Invalid Unicode escape sequence`, *(replayed)*).
+  Canvas finding: for free text, put **`String.raw` in front of the backticks**
+  (`` String.raw`{{{ ... }}}` ``), and JavaScript leaves backslashes in the data alone. Replayed: with
+  `String.raw`, `C:\users\x \u12` comes through intact.
+- **`String.raw` does not help with a backtick or `${` in the data** *(replayed)*: a backtick still ends the
+  string early and `${1+1}` is still *evaluated*.
+- **Backticks and `${` inside the brackets (canvas advice: avoid them; cause inferred).** The replay found no
+  template-phase problem with a template literal *used as code* inside a bracket (`` x => `a${x}` `` runs
+  fine). What breaks is a bracket whose **result text** contains a backtick or `${`, because that text is
+  pasted into the surrounding backtick string. Avoiding them stays sensible, but the reason is the output,
+  not the code.
+- **A leading newline makes the result `null`:** the engine evaluates `return ` + your text, and `return`
+  followed by a line break returns `undefined`. Start the expression on its first line.
+
+**4.6 Extras the canvas tests didn't cover (source-confirmed, replayed).** templayed is Mustache-compatible,
+so sections `` `{{#items}}{{.}},{{/items}}` `` (loop over an array / show a block if `true`), inverted
+sections `{{^items}}…{{/items}}` and comments `{{! note }}` also work in the template phase.
+
+### 5. Proven patterns
+
+**5.1 Escape text for use inside a JSON string**, e.g. a filter string that goes into an HTTP request body:
+
+```javascript
+JSON.stringify(`{{{filters}}}`).slice(1, -1)
+```
+
+Input `city:{matches:"Atlanta"}` gives `city:{matches:\"Atlanta\"}`. Use **one** `JSON.stringify`: applying it
+twice adds another layer of escaping and extra `\"` around the value.
+
+**5.2 Turn an object into compact text.** One bracket section per list, each starting with the variable name
+and returning a string, the whole thing inside backticks:
+
+```javascript
+`# SPECIALTIES (id|title)
+{{{ data.data.specialties.results.map(r => r.id + '|' + r.title.trim()).join('\n') }}}
+# GD TAGS (ids|title)
+{{{ data.data.gdTags.results.reduce((acc, r) => { const t = (r.title || '').trim(); const g = acc.find(x => x.k === t.toLowerCase()); if (g) { g.ids.push(r.id); } else { acc.push({ k: t.toLowerCase(), t: t, ids: [r.id] }); } return acc; }, []).map(g => g.ids.join(',') + '|' + g.t).join('\n') }}}`
+```
+
+On canvas this reduced a ~13,000-token JSON response to a few thousand tokens, which matters when the next
+step is an LLM call. It uses `.join('\n')`, which works as a single-line bracket; if you ever see
+`unexpected token in expression: '\'`, switch to a separator like `' ### '` (see 5.3 and 4.2b).
+
+**5.3 Turn a list of records into compact text (search results).** One record per person, fields separated by
+` | `, records by ` ### `. No backslashes anywhere, single quotes only, free text inside `String.raw` so
+backslashes in the data stay intact:
+
+```javascript
+String.raw`{{{ data.map(p => ['id:' + p.id, p.fullname, (p.organization && p.organization.name) || '', 'tags:' + (p.gdTags || []).map(t => t.title.trim()).join(', '), 'notes:' + (p.notes || []).map(n => n.notes || '').join(' / ')].join(' | ')).join(' ### ') }}}`
+```
+
+**Remaining risk:** a backtick or `${` in the free text breaks (or evaluates inside) the outer string. Rare in
+bios and notes, but they can't be filtered out inside the brackets without the characters that break the
+template engine. (Replayed: this pattern, with a shortened record, produces the expected one-line output.)
+
+### 6. Debugging
+
+- **Log the step output after every change.** The template phase changes values silently (`&quot;`,
+  `[object Object]`, empty strings, `null`).
+- **Build up in small steps:** first `` `{{{ data.data.specialties.results.length }}}` `` (path and access),
+  then `.map(...)`, then the full expression.
+- **Read the error to see which phase failed:**
+  - `expecting field name`, or `cannot read property 'x' of undefined` on something that isn't a variable
+    (`JSON`) → the **template phase** (4.1).
+  - `unexpected token in expression: '\'` → a `"` or a line break inside a bracket, or a backslash (4.2b).
+  - `invalid property name` and other plain syntax errors → usually a broken tag (an unclosed `{{`, or a
+    `}}` inside the code, 4.2) left in the text that then failed in the JavaScript phase.
+  - `X is not defined` where X is a *value you inserted* → the **JavaScript phase**: missing backticks or
+    quotes (4.5).
+  - `cannot read property 'results' of undefined` on a real variable → a wrong nested path (4.3).
+
+### 7. If you are writing a custom step that wants the same `{{var}}` behaviour
+
+Nothing in the platform does this for you: the live test of 2026-10-07 (see the entry "The WASM counterpart of the ActionsJS `gql` helper is the host `betty-blocks-types:data-api` interface" above)
+showed a step component receives `{{id}}` placeholders **unreplaced**, and nothing downstream substitutes
+them. The native Expression and HTTP steps do it *inside the component*, so a Rust step that wants the same
+has to bring its own substitution. Two design points from the above:
+
+- **Decide whether values are inserted as text or kept as typed values.** Text insertion is the reason for
+  `[object Object]`, the backtick rule and the escaping rules. For GraphQL especially, prefer passing values
+  as **GraphQL variables** (`variables` in the request, declared `$name` in the query) over splicing them
+  into the query string; that avoids the Filter-field injection described in the entry on the Data API
+  step's Filter field.
+- **Escape on insertion, not afterwards**, for whichever context the value lands in (JSON body, query,
+  JS string).
+
+**Where this lands:** the crash course's known-issues section (not edited yet).
+
+**Status:** canvas-confirmed by Marcel, October 2026; prefix, `}}`, quote and line-break rules
+source-confirmed 2026-10-09; the extra edge cases replayed locally only. Open: the cause of the one canvas
+`'\n'` failure is explained by the mechanism but not reproduced on canvas.
+
+---
+
+## Data API step's Filter field: GraphQL literal syntax, and the text is pasted into the query unchecked (2026-10-09)
+
+**Fact, confirmed on canvas (Marcel, October 2026):**
+- The Filter field takes **GraphQL literal syntax**: no outer braces, unquoted keys, quoted text. Example:
+  `_and:[{specialties:{id:{in:[24]}}},{city:{matches:"Atlanta"}}]`. Enum values work with or without quotes.
+- **The filter text is pasted into the query unchecked.** A filter that closes the braces itself can add query
+  structure: `id:{eq:1}}) { totalCount } x: allPerson(where:{id:{eq:2}` executed without an error. The
+  injected selection did not reach the step output (it returned `null`) but the query was accepted; how far
+  an injection can go (other models, mutations) was **not tested**.
+- **Never put untrusted text into this field without validating it.** Text from an AI agent or an external
+  caller can go straight into the field (no escaping is needed for it to work, unlike the JSON-body case in
+  the HTTP entry below), but it still counts as untrusted text.
+
+**Where this lands:** the crash course, wherever it covers the Data API step; also tracked in
+`product-feedback-log.md`.
+
+**Status:** confirmed on canvas, October 2026.
+
+---
+
+## HTTP step: Variables in the request body are inserted without JSON escaping, so a `"` in a value breaks the body (2026-10-09)
+
+**Fact, confirmed on canvas (Marcel, October 2026):** a value containing `"` that is inserted into the HTTP
+step's JSON body makes the body invalid JSON, and the request is answered with `422 Bad Request` before
+anything gets logged. Escape the value in an Expression step first (``JSON.stringify(`{{{v}}}`).slice(1, -1)``,
+see the Expression step entry, pattern 5.1) and insert the result.
+
+**Scope:** this applies when an action calls another action through the **HTTP(S) step**. It isn't needed when
+the action uses the **Data API request step** directly, which is the simpler route when it's available.
+
+**Also confirmed, same tests:** to call another action through the Data API, POST to
+`https://<host>/api/runtime/<app_uuid>` with `Content-Type: application/json` and a body like
+`{"query":"mutation { action(id: \"<action id>\", input: $input) }","variables":{"input":{…}}}`. `$input`
+did not need a type declaration.
+
+**Where this lands:** the crash course's known-issues section, and any example that builds a request body
+from user text.
+
+**Status:** confirmed on canvas, October 2026. Not independently re-run on 2026-10-09; I did not check
+which side produced the 422.
+
+---
+
+## A step that makes outbound HTTP calls can be tested end to end against a mock remote app, with `wasmtime-testing-helper`'s `http` feature (2026-10-02)
+
+**Fact, confirmed:** `wasmtime-testing-helper` (the same git dependency the other components use)
+has an opt-in `http` feature. With it, a test instantiates the real compiled `.wasm` of a step that
+imports `wasi:http/outgoing-handler`, and `harness.mock_http_handler(...)` answers each outgoing
+request with whatever the test wants. The handler receives the full request (method, URI, headers,
+body), so a test can assert the exact URL, `Authorization` header and JSON body the component
+sends, and can return a 200 with a GraphQL `errors` list, a 401, and so on. No network and no
+credentials are needed. Enable it with
+`wasmtime-testing-helper = { git = "...", features = ["http"] }`; the types are re-exported as
+`wasmtime_testing_helper::http::hyper`.
+
+Two details that cost a compile cycle: the generated `call_<function>` methods take `&String`, not
+`&str`, for every `string` parameter (and `Option<&String>` for `option<string>`), and the
+instantiated component is typed `wasmtime_testing_helper::InstantiatedComponent<bindings::Main>`.
+
+**How found:** porting the six `remote-bb-model` steps (they call another Betty Blocks app's data
+API) to `remote-bb-model-wasm-components/`. All 24 end-to-end tests there run the real component
+this way, next to 45 native unit tests on the shared logic.
+
+**Related, same project:** six standalone step crates in a disposable test project can share one
+pure-Rust `rlib` through a `path` dependency (`remote-bb-common`), so query building and response
+parsing exist once. The shared crate's own `workspace = true` fields resolve against its own
+workspace, so it also works from the test project. `just build` and `bb functions validate` pass
+for all six that way. Whether `bb functions publish` is happy with it is not tested yet.
+
+**Where this lands:** the crash-course section on testing a step, as "how to test a step that
+calls out over HTTP", and `testing-a-step-in-a-real-app.md`.
+
+**Status:** confirmed directly, 2026-10-02 (build, native and component tests, `bb functions
+validate`). Live canvas, 2026-10-02: Get JWT Token, Get all and Get one then worked against a real remote
+app, so the mock-tested request shape matched what a real Betty Blocks data API accepts for reads and for the JWT
+action. The write steps (Create, Update, Delete) are not live-tested yet.
+
+---
+
+## Never return an `option<...>` in a step's outputs; it fails at execution with "expected a string, received [object]" (2026-09-29)
+
+**Fact, confirmed live:** a custom step whose output record contained `option<string>` (a Text
+output) and `option<u32>` (Number outputs) built, validated, published and could be configured on
+canvas. It then failed **when the action executed**, at that step, with `expected a string,
+received [object]`. Changing those fields to plain `string`/`u32` fixed it, with nothing else about
+the interface changed. The platform receives an `option` as a wrapper object, not as the plain
+value an output of that type expects.
+
+**How found:** `dissect-params` (Remote Model Helper Steps port) on a real remote model action in
+`genius-sso-test`. Native Stringify accepted the same `params` input fine, so the input was
+suspect first. Comparing both compiled components with `wasm-tools component wit` showed the input
+declared identically (`params: json-string` vs Stringify's `value: json-string`). A survey of all
+24 steps in `bettyblocks/native-wasm-components` and `block-store-wasm-components` showed none
+returns an `option` in an output. They use `option` for inputs only (e.g. native HTTP's
+`body: option<string>`, liquid-template's `template: option<string>`), and every output record uses
+plain types (HTTP: `response-code: u16, as: json-string`). All three option fields were removed in
+one change, so which one triggered the error wasn't isolated. "Expected a string" points at the
+Text one (`jwt`).
+
+**Practical rule:** `option<...>` is fine for inputs, never for outputs. When an output can
+legitimately be absent, return a plain type with an empty value (`""`), or return an error if
+absence means misconfiguration. Don't reach for `option`. Add this to the manual function.json/WIT
+cross-check before publishing (see the "validate never compares function.json against the WIT"
+entry below). `validate`, publish and canvas configuration all accept an option output; only
+execution catches it.
+
+**Where this lands:** crash-course section on designing WIT for a step's outputs, next to the
+named-`json-string`-alias rule.
+
+**Status:** confirmed directly, first-hand, 2026-09-29 (Dissect Params). Parse as JWT got the same
+fix and awaits its own live test.
+
+---
+
+## `bb functions validate` only checks the generic ActionsJS schema and that a `.wasm` exists — it never compares `function.json` against the WIT (2026-09-24)
+
+**Fact, from reading the CLI's source (`@betty-blocks/cli` 26.1.0, `build/functions/validations.js`):** for a WASM project, `validate` (and `publish`'s validation step) does exactly two things per function. It checks `function.json` against the generic ActionsJS JSON schema, fetched from `github.com/bettyblocks/json-schema` (`schemas/actions/function.json`). And it checks that a file ending in `.wasm` exists in the folder. It never opens the `.wasm` or the WIT. So a `function.json` whose option names don't match the WIT's parameter/record-field names, or that uses an option type with no WASM precedent, passes with a green "valid".
+
+**How found:** the Remote Model Helper Steps ports had been passing `validate` all along, while their `function.json` files (carried over from the original ActionsJS versions) had inputs that didn't match the WIT at all. For example, `add-ids` had an option named `array` for a WIT parameter named `records`. Reading the validator's source explained why nothing flagged it. The same source also confirms the symlink entry below: function discovery is Bun's `Glob('**/function.json').scanSync()`, which doesn't follow symlinks.
+
+**Practical rule:** treat a passing `validate` as "the JSON is well-formed", nothing more. Check by hand, before publishing:
+- **Names:** every input option's `name` matches a WIT parameter. For a record return, every output option's `name` matches a record field. For a single return, there's exactly one output, conventionally named `result`, as in Betty Blocks' own steps. Our own working steps use the exact kebab-case WIT name. Native HTTP uses camelCase (`responseCode` for `response-code`), which suggests the platform converts between the two, but that's inferred from their files, not tested by us. Exact kebab-case is the proven choice.
+- **Types:** stick to option types Betty Blocks' own WASM steps use. For JSON in, that's `Value` with `allowedKinds`, not `Object`. The schema allows `Object` for ActionsJS, but no WASM step uses it. JSON values on either side should use a named `json-string` alias in the WIT (see the named-alias entry below). For numbers, `u32` is the only integer type confirmed working.
+
+**Side note for tests:** once a WIT parameter is typed `json-string` instead of `string`, `wasmtime-testing-helper`'s generated host bindings take `&String` rather than `&str`. Integration tests need `&String::from(...)`, not a bare string literal. This only affects tests. The component behaves the same.
+
+**Where this lands:** crash-course section on writing `function.json`, plus `docs/testing-a-step-in-a-real-app.md`'s build step ("validate passing doesn't mean the manifest matches the component").
+
+**Status:** confirmed directly from the CLI source, 2026-09-24. The name-mismatch failure itself hasn't been observed live (the functions were fixed before publishing).
+
+---
+
+## `bb functions validate`/`publish` silently skip any function whose `function.json` is a symlink — copy `function.json`, symlink only `src/` and `wit/` (2026-09-24)
+
+**Fact:** in a `bb functions init`-scaffolded test project, a function folder whose `function.json` is a **symlink** is invisible to the CLI. `bb functions validate` doesn't list it at all: no error, no warning, and the run still ends with "All your functions are valid and ready to be published!" Replace the symlink with a real file copy and the function shows up and validates immediately. Symlinked `src/` and `wit/` directories are fine, because those are read by `cargo`/`wkg`, which follow symlinks. Only the CLI's own `function.json` discovery ignores them.
+
+**How found:** added 7 more `remote-model-helper-steps-wasm-components` functions (plus re-linking `dissect-params`) to `genius-sso-test` using the documented pattern, with `src/`, `wit/` and `function.json` all symlinked. All 8 built clean with `cargo build --release --target wasm32-wasip2`, but `bb functions validate` (CLI 26.1.0) reported only the 2 pre-existing, non-symlinked SSO functions. Swapping `dissect-params`'s `function.json` symlink for a copy made it appear. Doing the same for the rest made all 10 validate.
+
+**Practical rule:** keep `src/` and `wit/` symlinked so there's one copy of the logic, but **copy** `function.json`. If you edit it in the source repo, re-copy it (or edit both). `docs/testing-a-step-in-a-real-app.md` step 3 has been corrected to match. Rule of thumb: if a function you expect is missing from `bb functions validate`'s list, check for a symlinked `function.json` first.
+
+**Where this lands:** crash-course section on testing a step in a real app. Same correction as the testing guide.
+
+**Status:** confirmed directly, first-hand, 2026-09-24 (`@betty-blocks/cli` 26.1.0). Whether `publish` behaves the same way isn't separately tested. It reuses validate's discovery, so it almost certainly does.
+
+---
+
 ## `anyOf`/`schemaModel`-typed `Object` outputs only bind correctly if the WIT field uses a named type alias, not a bare `string` (2026-09-24)
 
 **Fact, confirmed live:** for a custom Wasm step's `Object`-typed output (via `function.json`'s
@@ -192,8 +549,9 @@ something the step's own schema needs to attempt.
 
 **Why it matters:** this is exactly why the `"configuration": {"placeholder": "******"}` cosmetic
 masking attempt on `exchange-code-for-tokens`'s `client-secret` option (added, then removed, this
-session) was solving a non-problem — not just structurally invalid against the live publish
-schema (see the entry below on schema drift), but unnecessary in the first place. Don't reach for
+session) was solving a non-problem. It was unnecessary in the first place. (It was also believed
+to be invalid against the live publish schema, but that theory was later contradicted; see the
+2026-09-24 update on the schema-drift entry below.) Don't reach for
 step-level masking tricks for secret-like inputs; a plain option is correct and the real masking
 happens one layer up, in the platform's Configuration feature.
 
@@ -328,6 +686,18 @@ valid for a `"Text"`-typed option server-side, even though the CLI's bundled loc
 catch that. **This has not been independently re-verified against the live schema's own source —
 treat it as a working theory, not a confirmed root cause, until someone checks that removing
 `"configuration"` actually resolves the `400` on a real retry.**
+
+**Update, 2026-09-24 — the `"configuration"`-on-`Text` theory is contradicted; treat Fact 2's
+explanation as wrong.** Betty Blocks' own shipped steps pair `"configuration"` with `"Text"`:
+native HTTP's `url` option is `meta.type: "Text"` + `"configuration": {"placeholder": ...}`, and
+native `send-mail` has `"placeholder": "******"` on its password option (`Value` type). The
+"never with Text" observation above only held because it looked at `block-store-wasm-components`
+alone, not `native-wasm-components`. The error message itself also points at `#/options/2/meta`,
+not at `configuration`, so something inside that option's `meta` failed the live schema. The full
+original `meta` wasn't recorded, so the real cause can't be recovered now. What does still stand:
+local `validate` passed something the live endpoint rejected, so the two schemas really do differ
+in *something*. Found while auditing the Remote Model Helper ports, whose `"placeholder": "params"`
+hints had been removed on the strength of this theory and have now been restored.
 
 Separately, and independent of whether the above theory holds: a secret-like option (a client
 secret, a token) doesn't need step-level masking in the first place. Per Marcel Korporaal (Betty
@@ -655,3 +1025,12 @@ So a custom step can hand a model-typed Collection or Record to later steps by r
 **Status:** confirmed first-hand.
 
 ---
+
+## Drift: `wasm-base-components` HEAD has `upload-file@4.0.0`, while our docs and the live-tested `store-file-base64` fix use `@3.0.0` (2026-10-07)
+
+**Fact:** on 2026-09-16 `wasm-base-components` moved every WIT package to a fresh major ("move every WIT package and component to a fresh major"), and HEAD now has `betty-blocks-types:upload-file@4.0.0` (same payload shape as `@3.0.0`'s `file-base64: string`, but `use`-ing `data-api@3.0.0`/`types@3.0.0`). The `@3.0.0` fix recorded above (2026-08-12) was live-confirmed and may still work, but any doc, copy-paste or new component that pins the older versions should be re-checked against what the platform currently provides before being trusted. Native `create` on `main` currently locks `betty-blocks-types:{crud,data-api,types}@3.0.0`. The repo also notes `betty-blocks-types:types@3.1.0` exists on its `dev` branch with mutable tags — don't pin to a `dev`-only version.
+
+**How found:** comparing `wit/` in `wasm-base-components` HEAD and `functions/create/1.0/wkg.lock` in `native-wasm-components` HEAD while looking for the current `data-api` version.
+
+**Status:** observed in source, 2026-10-07. Not verified which versions the live host serves; the Data API Request spike checks `data-api@3.0.0` live.
+

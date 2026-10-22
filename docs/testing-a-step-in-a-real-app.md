@@ -57,18 +57,23 @@ authenticating — just stop before confirming any actual publish.)
    `just build` inside it so it has a `.wasm` file. Do this now, not right before you try to
    publish.
 
-3. **For each function you want to test, symlink the real code in — don't copy it.** Inside the
-   new project, under `functions/<name>/1.0/`, symlink `src/`, `wit/`, and `function.json` back to
-   their real location in `wasm-blocks-store/functions/<name>/1.0/`:
+3. **For each function you want to test, symlink the real code in — but copy `function.json`.**
+   Inside the new project, under `functions/<name>/1.0/`, symlink `src/` and `wit/` back to their
+   real location in `wasm-blocks-store/functions/<name>/1.0/`, and **copy** `function.json`:
 
    ```bash
    ln -s /path/to/wasm-blocks-store/functions/<name>/1.0/src src
    ln -s /path/to/wasm-blocks-store/functions/<name>/1.0/wit wit
-   ln -s /path/to/wasm-blocks-store/functions/<name>/1.0/function.json function.json
+   cp /path/to/wasm-blocks-store/functions/<name>/1.0/function.json function.json
    ```
 
    This keeps exactly one copy of the actual step logic. Edits made in `wasm-blocks-store` are
    what you're testing live, with nothing to sync back afterward.
+
+   **Don't symlink `function.json`.** `bb functions validate`/`publish` silently skip any function
+   whose `function.json` is a symlink. It won't be listed, and the command still reports "all
+   valid" (confirmed with CLI 26.1.0, see `developer-learnings-log.md`). `cargo` follows the
+   `src/`/`wit/` symlinks fine. If you change `function.json` in `wasm-blocks-store`, re-copy it.
 
 4. **Write a standalone `Cargo.toml` and `Justfile` for that function.** `wasm-blocks-store` is a
    Cargo workspace, so its functions use `dep.workspace = true` shortcuts and share a root
@@ -127,15 +132,19 @@ This passes `bb functions validate` locally, but the live endpoint rejects it:
 Error: 400, #/options/2/meta: Expected exactly one of the schemata to match, but none of them did.
 ```
 
-The working theory (not independently confirmed against the live schema's own source) is that
-`"configuration"` isn't valid alongside `meta.type: "Text"` server-side — every confirmed-working
-example in `block-store-wasm-components` (`liquid-template`, `store-file-base64`) only ever pairs
-`"configuration"` with `"MultilineText"` or `"Property"`, never `"Text"`. If you hit this, try
-removing the `"configuration"` block and publishing a plain `"Text"` option instead. This is also
-one less thing to solve than it looks: a secret-like input (a client secret, a token) doesn't need
-step-level masking at all — Betty Blocks' platform has its own Configuration feature for supplying
-values like this into a flow, with masking handled there, so a plain option is the right shape
-regardless of whether the `"configuration"` block turns out to be the actual cause of the `400`.
+**The cause is unknown. It is *not* the `"configuration"` block**, which an earlier version of
+this guide suggested. That theory is contradicted by Betty Blocks' own shipped steps: native HTTP's
+`url` option is exactly `meta.type: "Text"` + `"configuration": {"placeholder": ...}`, and native
+`send-mail` even has `"placeholder": "******"` on its password option. Note also that the error
+points at `#/options/2/meta`, not at `configuration`. So something *inside that option's `meta`*
+failed the live schema. The full original `meta` wasn't recorded, so what exactly is unknown.
+
+If you hit this, compare the failing option's `meta` key by key against a native step's option of
+the same type (in `bettyblocks/native-wasm-components`) and record the exact option you sent. That
+way the next person gets a real cause, not a guess. Separately, a secret-like input (a client
+secret, a token) doesn't need step-level masking at all. Betty Blocks' platform has its own
+Configuration feature for supplying values like this into a flow, with masking handled there, so a
+plain option is the right shape either way.
 
 ## Summary
 
@@ -143,5 +152,5 @@ regardless of whether the `"configuration"` block turns out to be the actual cau
 |---|---|
 | Can I `bb functions publish` directly from `wasm-blocks-store`? | No — it's never been bound to an app via `init`, and there's no flag to target one ad hoc. |
 | Do I need to restructure this repo to fix that? | No — the repo's shape was never the problem. |
-| What do I do instead? | `init` a separate, disposable test project elsewhere; symlink the real `src/`/`wit/`/`function.json` in; write standalone `Cargo.toml`/`Justfile`; `just build && just test`; `bb functions publish` from there. |
+| What do I do instead? | `init` a separate, disposable test project elsewhere; symlink the real `src/`/`wit/` in and copy `function.json` (a symlinked one is silently skipped); write standalone `Cargo.toml`/`Justfile`; `just build && just test`; `bb functions publish` from there. |
 | What happens to the test project afterward? | Discard it, unless it's actually a dedicated per-app project you're keeping long-term. |
