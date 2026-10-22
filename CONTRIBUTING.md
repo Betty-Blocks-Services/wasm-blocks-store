@@ -102,9 +102,7 @@ entirely through labels, info text, and error messages. Design for that:
       the moment the step is dragged onto a canvas (`CreateActionStep` fails with a
       generic "Something went wrong", not a length-specific error), not silently
       truncated — and front-end validation does not reliably catch it before publish.
-      See `docs/product-feedback-log.md`'s resolved "custom Wasm step fails 'Add step
-      to canvas'" entry for the full story; it cost a multi-day investigation the
-      first time.
+      It cost a multi-day investigation the first time.
 - [ ] **Designed for a non-developer user**: labels/info text/errors follow
       ["Designing for the people who'll actually use this"](#designing-for-the-people-wholl-actually-use-this)
       above — plain English where it helps, a real `info` string on *every* option,
@@ -135,8 +133,7 @@ Include, at minimum:
 - Anything you found non-obvious while building it — if it's a platform quirk worth
   other developers knowing, consider it belongs in the PR description even if it's
   not strictly about this step.
-- If building it taught you anything worth logging, add it to `docs/product-feedback-log.md`
-  or `docs/developer-learnings-log.md` (see [`docs/README.md`](docs/README.md)) as part of the
+- If building it taught you anything worth logging, add it to `docs/developer-learnings-log.md` (see [`docs/README.md`](docs/README.md)) as part of the
   same PR rather than as a separate follow-up.
 
 ## Grouping related steps into a block
@@ -171,8 +168,7 @@ a reason not to assume the same PR-and-review flow this repo uses applies over t
 
 Not every PR needs a new component. If you confirmed something new and non-obvious while
 debugging, testing, or just reading platform source — a bug, a gotcha, a corrected assumption —
-that's a valid PR on its own: an update to `docs/product-feedback-log.md` or
-`docs/developer-learnings-log.md`, following the existing entry format (what was found, how,
+that's a valid PR on its own: an update to `docs/developer-learnings-log.md`, following the existing entry format (what was found, how,
 why it matters, status). Verify it yourself before writing it as fact; if you're relaying
 something secondhand (a teammate's claim, a meeting note) rather than something you tested
 directly, say so explicitly in the entry rather than stating it as confirmed — see the

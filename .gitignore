@@ -7,3 +7,6 @@ target/
 
 # the original ActionsJS step, downloaded by tests/fetch_original.sh
 functions/*/*/tests/.original/
+
+# kept locally only, never committed
+docs/product-feedback-log.md

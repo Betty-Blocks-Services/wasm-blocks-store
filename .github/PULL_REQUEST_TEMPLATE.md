@@ -30,7 +30,7 @@
 
 - [ ] Something you tested yourself, not just relayed secondhand — or explicitly flagged as
       unverified if it is
-- [ ] Added to `docs/product-feedback-log.md` or `docs/developer-learnings-log.md`, following
+- [ ] Added to `docs/developer-learnings-log.md`, following
       the existing entry format
 
 **Repo process (workflow, templates, tooling, or anything about how the repo itself works —

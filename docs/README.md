@@ -15,8 +15,6 @@ crash-course/
 testing-a-step-in-a-real-app.md  How to actually publish and test a step from this repo on a
                                    real Betty Blocks app — the "actually published and tested
                                    live" checklist item in CONTRIBUTING.md.
-product-feedback-log.md          Confirmed findings worth reporting to Betty Blocks' own
-                                   product developers (bugs/gaps in the WASM platform itself).
 developer-learnings-log.md       Confirmed findings worth other BB developers knowing (gotchas,
                                    tooling quirks, corrected assumptions) — feeds back into the
                                    crash-course docs above over time.
@@ -30,7 +28,7 @@ oidc-sso-setup.md                 Usage guide for `exchange-code-for-tokens` +
                                    actually contains (a starter claims reference for Entra).
 ```
 
-Both logs are living documents — newest entries at the top, each one dated and either
+The log is a living document — newest entries at the top, each one dated and either
 confirmed, open, or (a few times already) explicitly retracted once a claim didn't hold up.
 That history is kept, not deleted, on purpose: it's the record of what's actually been checked
 versus what only sounded right at the time.

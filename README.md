@@ -30,8 +30,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checklist and PR process.
 ## Knowledge, not just code
 
 This repo is also where the knowledge from building WASM Actions lives — architecture notes, a
-Rust primer, two running logs of confirmed findings (platform gotchas, bugs worth reporting to
-Betty Blocks' product team, corrected assumptions), and a page on [wasco-dev](https://github.com/wasco-dev),
+Rust primer, a running log of confirmed findings (platform gotchas, tooling quirks, corrected assumptions), and a page on [wasco-dev](https://github.com/wasco-dev),
 a separate public WASM component registry worth checking before building something from scratch.
 See [`docs/`](docs/) for all of it.
 
@@ -109,4 +108,4 @@ test app and of a customer's development app (the customer app is not named here
   paging, sorting, the properties to retrieve) and returns the record, the records or the total
   count. See its README for the options and the differences from the ActionsJS step.
 
-See `docs/product-feedback-log.md` and `docs/developer-learnings-log.md` for the full history.
+See `docs/developer-learnings-log.md` for the full history.

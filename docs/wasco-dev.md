@@ -40,7 +40,7 @@ Before building something from scratch, check whether it already exists at
    clean.
 3. **Upload it into your Betty Blocks app via the interactive "Add custom Wasm step" wizard.**
    This is the key fact that makes this work with zero changes: the wizard never reads
-   `function.json` at all (confirmed in `product-feedback-log.md`) — it builds the option form
+   `function.json` at all — it builds the option form
    purely from the compiled `.wasm`'s own WIT interface. Most wasco-dev components don't ship a
    `function.json` (only `string_json_functions` does, as of this writing), but that's fine —
    the wizard doesn't need one. You'll get a working step, just with plain WIT-derived labels
