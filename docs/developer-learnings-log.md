@@ -615,3 +615,43 @@ This also explains `block-store-action-functions` (BB's own bundle of many Actio
 
 ---
 
+## The WASM counterpart of the ActionsJS `gql` helper is the host `betty-blocks-types:data-api` interface; a Block Store step can call it directly (2026-10-07)
+
+**Fact, confirmed live on a canvas:** ActionsJS steps send Data API queries with the runtime global `gql(query, variables)`. A WASM step has no such global; it imports the host interface `betty-blocks-types:data-api/data-api@3.0.0` and calls `request(helper-context, query, variables)`. This works from a third-party (Block Store) step published with `bb functions publish`, with `helper-context` as the first parameter of the exported function (the platform fills it in; it is not a `function.json` option).
+
+What was observed along the way:
+- The host forwards the query as typed; it does not infer GraphQL variable types, and nothing replaces `{{name}}` placeholders (not the platform before the step runs, not the Data API). A step that wants `{{name}}` interpolation, like native Expression and HTTP, has to do it itself. A `Map` option arrives as a JSON object string with typed values (a text variable as a string, a record variable as the whole record object).
+- A Data API error does not come back as a successful `{"errors": ...}` body: the host returns `Err`, and the runtime shows it as `ACTION RUN ERROR` with the GraphQL error envelope as an escaped JSON string in `message`.
+- A `json-string` return value is JSON-parsed by the platform: returning non-JSON text from a step whose WIT return type is `json-string` fails with `JSON.parse: unexpected character at line 1 column 1 of the JSON data`.
+- An empty `query()` is invalid GraphQL (`syntax error before ')'`), which is easy to mistake for a variables problem.
+
+**How found:** a throwaway step that forwarded a raw query to the host and echoed what it received, tested on a canvas while porting the ActionsJS Data API Request step (`functions/data-api-request/`).
+
+**Status:** confirmed first-hand.
+
+---
+
+## The Data API accepts a `take` of at most 200 (2026-10-08)
+
+**Fact:** a query without `take` returns 200 records, which is also the maximum; a `take` of 201 or more is rejected as an unsupported request. This is not in the Data API documentation (which lists a 5 s query timeout, 10 queries per request, 4 relation levels and read-rate limits). The ActionsJS Data API Request step's README says "max 5,000" and its code clamps to 5000, so that cap does not match what the server accepts. Reading more than 200 records takes several queries using `skip`, ideally with a unique sort order so pages do not overlap; the WASM Data API Request step does this itself.
+
+**How found:** tested against the Data API while building the WASM Data API Request step.
+
+**Status:** reported after testing; the exact error text was not captured.
+
+---
+
+## A step that returns records as JSON: `json-string` binds as a Record or Collection; `list<betty-record-json>` does not; and without `id` later steps fail (2026-10-08)
+
+**Fact, confirmed live:** the same JSON array of records returned from a step in three WIT shapes, then used in an action that fetched two records, looped over them and updated a property from each loop item:
+- `result<json-string, string>` (a named alias of `string`): the result is a real array of objects, and the loop's Update step works. A single record returned the same way, bound as a Record, also works.
+- `result<betty-record-json, string>` (the alias native Create uses for its Record output): identical behaviour.
+- `result<list<betty-record-json>, string>` (one JSON string per record): each element stays a string, so the result is an array of strings and the loop's Update fails with `can't convert undefined to BigInt`.
+
+So a custom step can hand a model-typed Collection or Record to later steps by returning it as one JSON string, with `{"type": "Collection", "model": "model"}` (or `Record`) in the `anyOf` of the Result option. The result only contains the properties that were queried: without `id`, an Update step fails with `can't convert undefined to BigInt` (the `id` identifies the record), and a property that was not queried reads as empty. The same holds for the properties of a relation.
+
+**How found:** canvas tests of the WASM Data API Request step.
+
+**Status:** confirmed first-hand.
+
+---

@@ -4,3 +4,6 @@ target/
 *.wasm
 
 .DS_Store
+
+# the original ActionsJS step, downloaded by tests/fetch_original.sh
+functions/*/*/tests/.original/
