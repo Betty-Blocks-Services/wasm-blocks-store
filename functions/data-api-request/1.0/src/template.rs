@@ -19,10 +19,23 @@
 //! - A `|` in the template stays a `|`. templayed's newline-escaping regex `[\n|\r\n]` also matched
 //!   `|`, so every `|` in an ActionsJS filter silently became a line break.
 
+use std::borrow::Cow;
+
 use serde_json::Value;
+
+/// The most the rendered text may grow to. A section over a big array that prints the array again
+/// for every item multiplies quickly; this turns that into an error instead of running out of memory.
+const MAX_RENDERED_LEN: usize = 64 * 1024;
 
 pub fn render(template: &str, variables: &Value) -> Result<String, String> {
     render_block(template, &mut vec![variables.clone()])
+}
+
+fn too_long() -> String {
+    format!(
+        "The filter is longer than {} KB after the variables were filled in",
+        MAX_RENDERED_LEN / 1024
+    )
 }
 
 fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String> {
@@ -30,6 +43,9 @@ fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String
     let mut rest = template;
 
     while let Some(start) = rest.find("{{") {
+        if output.len() > MAX_RENDERED_LEN {
+            return Err(too_long());
+        }
         output.push_str(&rest[..start]);
         let after_open = &rest[start + 2..];
 
@@ -39,7 +55,7 @@ fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String
                 output.push_str(&rest[start..]);
                 return Ok(output);
             };
-            output.push_str(&stringify(lookup(stack, inner[..end].trim()).as_ref()));
+            output.push_str(&stringify(lookup(stack, inner[..end].trim()).as_deref()));
             rest = &inner[end + 3..];
             continue;
         }
@@ -55,20 +71,19 @@ fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String
         match tag.chars().next() {
             Some('!') => rest = remainder,
             Some('&') => {
-                output.push_str(&stringify(lookup(stack, tag[1..].trim()).as_ref()));
+                output.push_str(&stringify(lookup(stack, tag[1..].trim()).as_deref()));
                 rest = remainder;
             }
             Some(marker @ ('#' | '^')) => {
                 let key = tag[1..].trim();
-                let closing = format!("{{{{/{key}}}}}");
-                let Some(close_at) = remainder.find(&closing) else {
+                let Some((close_at, close_len)) = find_closing_tag(remainder, key) else {
                     return Err(format!(
-                        "The template section {{{{{marker}{key}}}}} is never closed with {closing}"
+                        "The template section {{{{{marker}{key}}}}} is never closed with {{{{/{key}}}}}"
                     ));
                 };
                 let inner = &remainder[..close_at];
                 render_section(&mut output, marker, key, inner, stack)?;
-                rest = &remainder[close_at + closing.len()..];
+                rest = &remainder[close_at + close_len..];
             }
             Some('/') => {
                 return Err(format!(
@@ -77,7 +92,7 @@ fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String
                 ));
             }
             _ => {
-                let value = stringify(lookup(stack, tag.trim()).as_ref());
+                let value = stringify(lookup(stack, tag.trim()).as_deref());
                 output.push_str(&escape(&value));
                 rest = remainder;
             }
@@ -85,7 +100,26 @@ fn render_block(template: &str, stack: &mut Vec<Value>) -> Result<String, String
     }
 
     output.push_str(rest);
+    if output.len() > MAX_RENDERED_LEN {
+        return Err(too_long());
+    }
     Ok(output)
+}
+
+/// Finds the first `{{/key}}` in `text` (spaces around the key are allowed, as in the opening
+/// tag) and returns where it starts and how long it is.
+fn find_closing_tag(text: &str, key: &str) -> Option<(usize, usize)> {
+    let mut search_from = 0;
+    while let Some(offset) = text[search_from..].find("{{/") {
+        let start = search_from + offset;
+        let after = &text[start + 3..];
+        let end = after.find("}}")?;
+        if after[..end].trim() == key {
+            return Some((start, 3 + end + 2));
+        }
+        search_from = start + 3;
+    }
+    None
 }
 
 fn render_section(
@@ -98,9 +132,9 @@ fn render_section(
     let value = lookup(stack, key);
 
     if marker == '^' {
-        let empty = match &value {
+        let empty = match value.as_deref() {
             Some(Value::Array(items)) => items.is_empty(),
-            other => !is_truthy(other.as_ref()),
+            other => !is_truthy(other),
         };
         if empty {
             output.push_str(&render_block(inner, stack)?);
@@ -108,23 +142,30 @@ fn render_section(
         return Ok(());
     }
 
-    match value {
-        Some(Value::Bool(true)) => output.push_str(&render_block(inner, stack)?),
-        Some(Value::Array(items)) => {
-            for item in items {
-                stack.push(item);
-                let rendered = render_block(inner, stack);
-                stack.pop();
-                output.push_str(&rendered?);
-            }
+    // The items are copied out so the stack can be changed while they are rendered.
+    let items = match value.as_deref() {
+        Some(Value::Bool(true)) => {
+            output.push_str(&render_block(inner, stack)?);
+            return Ok(());
         }
-        _ => {}
+        Some(Value::Array(items)) => items.clone(),
+        _ => return Ok(()),
+    };
+    for item in items {
+        stack.push(item);
+        let rendered = render_block(inner, stack);
+        stack.pop();
+        output.push_str(&rendered?);
+        if output.len() > MAX_RENDERED_LEN {
+            return Err(too_long());
+        }
     }
     Ok(())
 }
 
-/// Looks a path up in the current context (`{{../x}}` walks up the context stack).
-fn lookup(stack: &[Value], path: &str) -> Option<Value> {
+/// Looks a path up in the current context (`{{../x}}` walks up the context stack). Borrows the
+/// value; only `.length` builds a new one.
+fn lookup<'a>(stack: &'a [Value], path: &str) -> Option<Cow<'a, Value>> {
     let mut depth = 1;
     let mut path = path;
     while let Some(stripped) = path.strip_prefix("../") {
@@ -132,21 +173,27 @@ fn lookup(stack: &[Value], path: &str) -> Option<Value> {
         path = stripped;
     }
 
-    let mut current = stack.get(stack.len().checked_sub(depth)?)?.clone();
+    let mut current: &'a Value = stack.get(stack.len().checked_sub(depth)?)?;
     if path == "." {
-        return Some(current);
+        return Some(Cow::Borrowed(current));
     }
 
-    for key in path.split('.') {
-        current = match (&current, key) {
-            (Value::Array(items), "length") => Value::from(items.len()),
-            (Value::String(text), "length") => Value::from(text.encode_utf16().count()),
-            (Value::Object(map), key) => map.get(key)?.clone(),
-            (Value::Array(items), key) => items.get(key.parse::<usize>().ok()?)?.clone(),
+    let keys: Vec<&str> = path.split('.').collect();
+    for (position, key) in keys.iter().enumerate() {
+        let is_last = position + 1 == keys.len();
+        current = match (current, *key) {
+            (Value::Array(items), "length") if is_last => {
+                return Some(Cow::Owned(Value::from(items.len())));
+            }
+            (Value::String(text), "length") if is_last => {
+                return Some(Cow::Owned(Value::from(text.encode_utf16().count())));
+            }
+            (Value::Object(map), key) => map.get(key)?,
+            (Value::Array(items), key) => items.get(key.parse::<usize>().ok()?)?,
             _ => return None,
         };
     }
-    Some(current)
+    Some(Cow::Borrowed(current))
 }
 
 /// JavaScript truthiness for a JSON value.
@@ -196,7 +243,10 @@ fn number_to_string(number: &serde_json::Number) -> String {
 }
 
 fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
+    // A backslash is escaped too: a value ending in `\` would otherwise escape the closing quote
+    // of the string it is placed in and let the next value out of that string.
+    text.replace('\\', "\\\\")
+        .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('>', "&gt;")
         .replace('<', "&lt;")
@@ -362,12 +412,46 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_backslash_in_a_value_is_escaped() {
+        let vars = json!({ "v": "a\\" });
+        assert_eq!(render_ok("\"{{v}}\"", vars.clone()), "\"a\\\\\"");
+        // Raw tags are for the developer who knows what they are doing: no escaping at all.
+        assert_eq!(render_ok("\"{{{v}}}\"", vars), "\"a\\\"");
+    }
+
+    #[test]
+    fn section_keys_may_have_spaces_in_the_closing_tag() {
+        let vars = json!({ "ids": [1, 2] });
+        assert_eq!(render_ok("{{# ids }}{{.}}{{/ ids }}", vars.clone()), "12");
+        assert_eq!(render_ok("{{#ids}}{{.}}{{/ids }}", vars.clone()), "12");
+        assert_eq!(render_ok("{{^ none }}x{{/ none }}", vars), "x");
+    }
+
+    #[test]
+    fn output_that_grows_too_large_is_an_error() {
+        let items: Vec<u32> = (0..3000).collect();
+        let error = render("{{#a}}{{../a}}{{/a}}", &json!({ "a": items })).unwrap_err();
+        assert!(error.contains("longer than 64 KB"), "{error}");
+    }
+
     /// The expected output of the original templayed.js (see tests/generate_templayed_cases.mjs).
     #[test]
     fn matches_the_original_templayed_js() {
-        let cases: Vec<Value> =
+        // Update this when tests/generate_templayed_cases.mjs gets more cases, so a regenerated
+        // file that quietly lost cases does not pass.
+        const EXPECTED_CASES: usize = 25;
+        const EXPECTED_SKIPPED: usize = 4;
+
+        let fixture: Value =
             serde_json::from_str(include_str!("../tests/templayed_cases.json")).unwrap();
-        assert!(!cases.is_empty());
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), EXPECTED_CASES);
+        assert_eq!(
+            fixture["skipped"].as_array().unwrap().len(),
+            EXPECTED_SKIPPED
+        );
+
         for case in cases {
             let template = case["template"].as_str().unwrap();
             let expected = case["expected"].as_str().unwrap();

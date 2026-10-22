@@ -5,6 +5,7 @@ mod bindings {
     export!(DataApiRequest);
 }
 
+mod graphql;
 mod query;
 mod template;
 
@@ -31,6 +32,8 @@ impl Guest for DataApiRequest {
         sort_field: Option<String>,
         query_data: Option<String>,
         output_type: String,
+        // Declared because the SchemaModel option in function.json is handed to the step by that
+        // name; it only types the result on the canvas and has no effect on the query.
         _schema_model: Option<String>,
     ) -> Result<JsonString, String> {
         let variables: serde_json::Value = if filter_variables.trim().is_empty() {

@@ -3,6 +3,7 @@
 
 use serde_json::Value;
 
+use crate::graphql::{self, Problem};
 use crate::template;
 
 /// Used when `take` is empty or 0, like the ActionsJS step.
@@ -75,6 +76,7 @@ impl SortOrder {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Params<'a> {
     pub model_name: &'a str,
     pub query_type: QueryType,
@@ -118,28 +120,37 @@ fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, Strin
     if model_name.is_empty() {
         return Err(String::from("Select a model"));
     }
+    if !is_name(model_name, false) {
+        return Err(format!(
+            "The model name \"{model_name}\" is not valid: use letters, digits and underscores"
+        ));
+    }
 
     let field = match params.query_type {
         QueryType::Record => format!("one{model_name}"),
         QueryType::Collection => format!("all{model_name}"),
     };
 
-    let query_data = params.query_data.map(str::trim).unwrap_or_default();
     let needs_query_data =
         params.query_type == QueryType::Record || params.output_type == OutputType::Results;
-    if needs_query_data && query_data.is_empty() {
-        return Err(String::from(
-            "Query data is empty: list the properties to retrieve, e.g. \"id name\"",
-        ));
-    }
-
-    check_balanced("Query data", query_data)?;
-
-    // Later steps (an update, a loop, ...) find a record by its id, so the id is always selected.
-    let query_data = if needs_query_data && !selects_id(query_data) {
-        format!("id {query_data}")
+    let query_data = if needs_query_data {
+        let raw = params.query_data.unwrap_or_default();
+        if raw.trim().is_empty() {
+            return Err(String::from(
+                "Query data is empty: list the properties to retrieve, e.g. \"id name\"",
+            ));
+        }
+        // Checked as typed (not trimmed) so the line numbers in the message are the real ones.
+        check_balanced("Query data", raw, true, "")?;
+        let selection = raw.trim();
+        // Later steps (an update, a loop, ...) find a record by its id, so the id is always selected.
+        if graphql::selects_id(selection) {
+            selection.to_string()
+        } else {
+            format!("id {selection}")
+        }
     } else {
-        query_data.to_string()
+        String::new()
     };
 
     let body = match (params.query_type, params.output_type) {
@@ -148,13 +159,19 @@ fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, Strin
         (QueryType::Collection, OutputType::TotalCount) => String::from("totalCount"),
     };
 
-    let filter = template::render(params.filter.unwrap_or_default(), params.variables)?;
-    let filter = normalize_filter(&filter)?;
+    let template = params.filter.unwrap_or_default();
+    let filter = template::render(template, params.variables)?;
+    let filter = normalize_filter(&filter, template.contains("{{"))?;
     let sort = match params
         .sort_field
         .map(str::trim)
         .filter(|field| !field.is_empty())
     {
+        Some(sort_field) if !is_name(sort_field, true) => {
+            return Err(format!(
+                "The sort field \"{sort_field}\" is not valid: use a property name, with a . for a relation (for example company.name)"
+            ));
+        }
         Some(sort_field) => format!(
             ", sort: {{ order: {}, field: {sort_field} }}",
             params.sort_order.as_graphql()
@@ -169,207 +186,58 @@ fn build_page(params: &Params, skip: u32, take: u32) -> Result<BuiltQuery, Strin
     Ok(BuiltQuery { query, field })
 }
 
-/// The characters of GraphQL text that are code: not inside a "string" and not inside a `#`
-/// comment (which runs to the end of the line). A string is reported as one space.
-fn code_chars(text: &str) -> Vec<(usize, char)> {
-    let mut chars = Vec::new();
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut in_comment = false;
-
-    for (index, character) in text.char_indices() {
-        if in_comment {
-            if character == '\n' {
-                in_comment = false;
-                chars.push((index, character));
-            }
-            continue;
-        }
-        if in_string {
-            match character {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => in_string = false,
-                _ => {}
-            }
-            continue;
-        }
-        match character {
-            '"' => {
-                in_string = true;
-                chars.push((index, ' '));
-            }
-            '#' => in_comment = true,
-            _ => chars.push((index, character)),
-        }
-    }
-    chars
-}
-
-/// Whether a selection like `id name company { id }` selects `id` at its top level (an `id`
-/// inside a relation or an argument does not count).
-fn selects_id(selection: &str) -> bool {
-    let mut depth = 0i32;
-    let mut word = String::new();
-    let mut top_level_words = Vec::new();
-
-    for (_, character) in code_chars(selection) {
-        if depth == 0 && (character.is_alphanumeric() || character == '_') {
-            word.push(character);
-            continue;
-        }
-        if !word.is_empty() {
-            top_level_words.push(std::mem::take(&mut word));
-        }
-        match character {
-            '{' | '[' | '(' => depth += 1,
-            '}' | ']' | ')' => depth -= 1,
-            _ => {}
-        }
-    }
-    if !word.is_empty() {
-        top_level_words.push(word);
-    }
-
-    top_level_words.iter().any(|word| word == "id")
-}
-
-enum BracketProblem {
-    /// A closing bracket with nothing open.
-    Unmatched { close: char, at: usize },
-    /// A closing bracket of another kind than the one that is open.
-    Mismatch {
-        close: char,
-        close_at: usize,
-        open: char,
-        open_at: usize,
-    },
-    /// An opening bracket that is never closed.
-    Unclosed { open: char, at: usize },
-}
-
-fn find_bracket_problem(text: &str) -> Option<BracketProblem> {
-    let mut open: Vec<(char, usize)> = Vec::new();
-
-    for (index, character) in code_chars(text) {
-        match character {
-            '{' | '[' | '(' => open.push((character, index)),
-            '}' | ']' | ')' => match open.pop() {
-                None => {
-                    return Some(BracketProblem::Unmatched {
-                        close: character,
-                        at: index,
-                    });
-                }
-                Some((opener, open_at)) => {
-                    let expected = match opener {
-                        '{' => '}',
-                        '[' => ']',
-                        _ => ')',
-                    };
-                    if character != expected {
-                        return Some(BracketProblem::Mismatch {
-                            close: character,
-                            close_at: index,
-                            open: opener,
-                            open_at,
-                        });
-                    }
-                }
-            },
-            _ => {}
-        }
-    }
-    open.pop()
-        .map(|(opener, at)| BracketProblem::Unclosed { open: opener, at })
-}
-
-/// "line 12 (`  organization { name }`)": where a problem is, since the text can be long.
-fn describe_line(text: &str, index: usize) -> String {
-    let line_number = text[..index].matches('\n').count() + 1;
-    let line = text.lines().nth(line_number - 1).unwrap_or_default().trim();
-    let shown: String = line.chars().take(60).collect();
-    let ellipsis = if line.chars().count() > 60 { "..." } else { "" };
-    format!("line {line_number} (`{shown}{ellipsis}`)")
-}
-
-/// Fails with a readable message that points at the line when brackets do not pair up, instead
-/// of sending the query and getting the Data API's "syntax error before: '}'".
-fn check_balanced(label: &str, text: &str) -> Result<(), String> {
-    let hint = if label == "Filter" {
-        " The filter is wrapped in curly braces for you, so write it without outer braces, \
-         for example: id: { eq: 1 }."
-    } else {
-        ""
-    };
-
-    match find_bracket_problem(text) {
+/// Fails with a readable message that points at the line when the text has a string that is not
+/// closed or brackets that do not pair up, instead of sending the query and getting the Data
+/// API's "syntax error before: '}'".
+///
+/// `show_text` quotes the offending line; it is off for the filter, which can contain values
+/// filled in from variables that should not end up in an error message.
+fn check_balanced(label: &str, text: &str, show_text: bool, note: &str) -> Result<(), String> {
+    match graphql::find_problem(text) {
         None => Ok(()),
-        Some(BracketProblem::Unmatched { close, at }) => Err(format!(
-            "{label} has a closing `{close}` without an opening one on {}.{hint}",
-            describe_line(text, at)
-        )),
-        Some(BracketProblem::Mismatch {
-            close,
-            close_at,
-            open,
-            open_at,
-        }) => Err(format!(
-            "{label} has a closing `{close}` on {} that does not match the `{open}` opened on {}.{hint}",
-            describe_line(text, close_at),
-            describe_line(text, open_at)
-        )),
-        Some(BracketProblem::Unclosed { open, at }) => Err(format!(
-            "{label} has an opening `{open}` on {} that is never closed.{hint}",
-            describe_line(text, at)
-        )),
-    }
-}
-
-/// The text between the outer curly braces if the whole of `text` (ignoring comments and
-/// whitespace) is one `{ ... }` pair, else `None`.
-fn inside_outer_braces(text: &str) -> Option<&str> {
-    let chars = code_chars(text);
-    let mut significant = chars
-        .iter()
-        .filter(|(_, character)| !character.is_whitespace());
-    let &(first_at, first) = significant.next()?;
-    if first != '{' {
-        return None;
-    }
-
-    let mut depth = 0i32;
-    let mut close_at = None;
-    for &(index, character) in chars.iter().filter(|(index, _)| *index >= first_at) {
-        match character {
-            '{' | '[' | '(' => depth += 1,
-            '}' | ']' | ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    close_at = Some(index);
-                    break;
-                }
-            }
-            _ => {}
+        Some(problem) => {
+            let hint = if matches!(problem, Problem::UnmatchedClose { .. }) {
+                " The filter is wrapped in curly braces for you, so write it without outer \
+                 braces, for example: id: { eq: 1 }."
+            } else {
+                ""
+            };
+            let hint = if label == "Filter" { hint } else { "" };
+            Err(format!(
+                "{label} {}{note}.{hint}",
+                problem.describe(text, show_text)
+            ))
         }
     }
-    let close_at = close_at?;
-
-    // Nothing but whitespace and comments may follow the closing brace.
-    let nothing_after = chars
-        .iter()
-        .filter(|(index, _)| *index > close_at)
-        .all(|(_, character)| character.is_whitespace());
-    nothing_after.then(|| text[first_at + 1..close_at].trim())
 }
 
 /// Checks the rendered filter and removes one pair of outer curly braces if the whole filter is
 /// wrapped in them (`{ id: { eq: 1 } }`), because the step adds those itself. A filter can never
 /// validly start with `{`, so this cannot change the meaning of a working filter.
-fn normalize_filter(filter: &str) -> Result<String, String> {
-    check_balanced("Filter", filter)?;
+///
+/// Line numbers refer to the rendered text, so when the filter template has `{{...}}` tags the
+/// message says so.
+fn normalize_filter(filter: &str, was_templated: bool) -> Result<String, String> {
+    let note = if was_templated {
+        " (counted after the variables were filled in)"
+    } else {
+        ""
+    };
+    check_balanced("Filter", filter, false, note)?;
     let trimmed = filter.trim();
-    Ok(inside_outer_braces(trimmed).unwrap_or(trimmed).to_string())
+    Ok(graphql::inside_outer_braces(trimmed)
+        .unwrap_or(trimmed)
+        .to_string())
+}
+
+/// A property or model name: letters, digits and `_`, and `.` too when `allow_dot` is set (for a
+/// relation path in a sort field).
+fn is_name(text: &str, allow_dot: bool) -> bool {
+    let mut characters = text.chars();
+    characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && characters.all(|c| c.is_ascii_alphanumeric() || c == '_' || (allow_dot && c == '.'))
 }
 
 /// The messages of a GraphQL error envelope (`{"errors": [{"message": ...}]}`), if it is one.
@@ -417,9 +285,12 @@ pub fn extract_result(
 
     let value = match (params.query_type, params.output_type) {
         (QueryType::Record, _) => node,
-        (QueryType::Collection, OutputType::Results) => node
-            .get("results")
-            .ok_or("The Data API response has no `results`")?,
+        (QueryType::Collection, OutputType::Results) => match node.get("results") {
+            // `null` is an empty list, whether the step fetched one page or several.
+            Some(Value::Null) => &Value::Array(Vec::new()),
+            Some(results) => results,
+            None => return Err(String::from("The Data API response has no `results`")),
+        },
         (QueryType::Collection, OutputType::TotalCount) => node
             .get("totalCount")
             .ok_or("The Data API response has no `totalCount`")?,
@@ -440,14 +311,30 @@ pub fn run(
     let mut send_query =
         |built: &BuiltQuery| send(&built.query).map_err(|error| host_error_message(&error));
 
+    let total = requested_take(params);
+    let paged = params.query_type == QueryType::Collection
+        && params.output_type == OutputType::Results
+        && total > PAGE_SIZE;
+
+    // Pages are separate requests, so without a sort order a record can come back twice or not
+    // at all. Sort by id when the developer gave no sort field.
+    let has_sort = params
+        .sort_field
+        .is_some_and(|field| !field.trim().is_empty());
+    let params = if paged && !has_sort {
+        Params {
+            sort_field: Some("id"),
+            ..*params
+        }
+    } else {
+        *params
+    };
+    let params = &params;
+
     let built = build_query(params)?;
     let response = send_query(&built)?;
     let first = extract_result(&response, &built, params)?;
-
-    let paged =
-        params.query_type == QueryType::Collection && params.output_type == OutputType::Results;
-    let total = requested_take(params);
-    if !paged || total <= PAGE_SIZE {
+    if !paged {
         return Ok(first);
     }
 
@@ -456,7 +343,9 @@ pub fn run(
     // The first request asked for a full page. Keep going while pages come back full.
     let mut last_page_was_full = records.len() as u32 == PAGE_SIZE;
     while last_page_was_full && (records.len() as u32) < total {
-        let skip = start + records.len() as u32;
+        let skip = start
+            .checked_add(records.len() as u32)
+            .ok_or("Skip is too large")?;
         let page_take = PAGE_SIZE.min(total - records.len() as u32);
         let built = build_page(params, skip, page_take)?;
         let response = send_query(&built)?;
@@ -609,6 +498,15 @@ mod tests {
     /// A fake Data API with `count` records (ids 1..=count) that answers `skip`/`take` queries like
     /// the real one, including rejecting a `take` above 200. Returns the queries it received.
     fn fake_data_api(count: u32) -> (impl FnMut(&str) -> Result<String, String>, ReceivedQueries) {
+        fake_data_api_at(0, count)
+    }
+
+    /// Like `fake_data_api`, but the `count` records start at id `first_id + 1`, and requests are
+    /// answered as if they started at skip `first_id`.
+    fn fake_data_api_at(
+        first_id: u32,
+        count: u32,
+    ) -> (impl FnMut(&str) -> Result<String, String>, ReceivedQueries) {
         let received = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let log = received.clone();
         let send = move |query: &str| {
@@ -626,8 +524,9 @@ mod tests {
             if take > 200 {
                 return Err(String::from("unsupported request"));
             }
-            let results: Vec<Value> = (skip + 1..=count.min(skip + take))
-                .map(|id| json!({ "id": id }))
+            let offset = skip.saturating_sub(first_id);
+            let results: Vec<Value> = (offset + 1..=count.min(offset + take))
+                .map(|id| json!({ "id": u64::from(first_id) + u64::from(id) }))
                 .collect();
             Ok(json!({ "data": { "allWebuser": { "results": results } } }).to_string())
         };
@@ -1019,12 +918,175 @@ mod tests {
         assert!(build_query(&p).unwrap_err().contains("Query data"));
     }
 
+    fn failing_build(query_data: &str, filter: Option<&str>, variables: &Value) -> String {
+        let mut p = params(variables);
+        p.query_data = Some(query_data);
+        p.filter = filter;
+        build_query(&p).unwrap_err()
+    }
+
+    #[test]
+    fn a_value_ending_in_a_backslash_cannot_escape_its_string() {
+        let vars = json!({ "a": "\\", "b": "} OR: [{ id: { gt: 0 } }] #" });
+        let mut p = params(&vars);
+        p.filter = Some("owner: { eq: \"{{a}}\" }, name: \"{{b}}\"");
+        let query = build_query(&p).unwrap().query;
+
+        // The backslash is doubled, so it is a backslash and the string still closes.
+        assert!(
+            query.contains("owner: { eq: \"\\\\\" }, name: \"} OR"),
+            "{query}"
+        );
+        // Everything the second value contains stays inside its string: none of it is code.
+        let code: String = crate::graphql::code_chars(&query)
+            .unwrap()
+            .into_iter()
+            .map(|(_, character)| character)
+            .collect();
+        assert!(!code.contains("OR"), "{code}");
+    }
+
+    #[test]
+    fn a_bare_carriage_return_cannot_end_a_comment_unnoticed() {
+        let vars = json!({ "id": "1 #\r} }, skip: 0, take: 1) { results { id passwordHash } } other: allWebuser(where: { x: { eq: 1 \n" });
+        let error = failing_build("id", Some("id: { eq: {{id}} }"), &vars);
+        assert!(error.starts_with("Filter has a closing `}`"), "{error}");
+
+        let error = failing_build("name # c\r}", None, &json!({}));
+        assert!(error.starts_with("Query data has a closing `}`"), "{error}");
+    }
+
+    #[test]
+    fn block_strings_cannot_hide_brackets() {
+        let error = failing_build("name \"\"\"a(a\" \"\"\"{{}", None, &json!({}));
+        assert!(error.contains("never closed"), "{error}");
+    }
+
+    #[test]
+    fn an_unterminated_string_is_reported() {
+        let error = failing_build("id", Some("name: { eq: \"oops }"), &json!({}));
+        assert!(error.contains("string that is never closed"), "{error}");
+    }
+
+    #[test]
+    fn the_sort_field_and_the_model_name_are_validated() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.sort_field = Some(
+            "id }) { results { id passwordHash } } other: allWebuser(where: {}, sort: { field: id",
+        );
+        let error = build_query(&p).unwrap_err();
+        assert!(error.contains("sort field"), "{error}");
+
+        p.sort_field = Some("company.name");
+        assert!(
+            build_query(&p)
+                .unwrap()
+                .query
+                .contains("field: company.name")
+        );
+
+        p.sort_field = None;
+        p.model_name = "Web user }";
+        assert!(build_query(&p).unwrap_err().contains("model name"));
+    }
+
+    #[test]
+    fn line_numbers_count_leading_blank_lines() {
+        let error = failing_build("\n\n  name\n  email\n}", None, &json!({}));
+        assert!(error.contains("on line 5 (`}`)"), "{error}");
+    }
+
+    #[test]
+    fn filter_errors_do_not_echo_the_text_and_say_the_lines_are_rendered() {
+        let vars = json!({ "secret": "abc123TOKEN" });
+        let error = failing_build("id", Some("id: { eq: \"{{secret}}\" } }"), &vars);
+        assert!(!error.contains("abc123TOKEN"), "{error}");
+        assert!(!error.contains("`}`)"), "{error}");
+        assert!(
+            error.contains("counted after the variables were filled in"),
+            "{error}"
+        );
+
+        // No tags in the filter: the line numbers are the typed ones, nothing to add.
+        let error = failing_build("id", Some("id: { eq: 1 } }"), &vars);
+        assert!(!error.contains("filled in"), "{error}");
+    }
+
+    #[test]
+    fn query_data_is_not_checked_when_it_is_not_used() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.output_type = OutputType::TotalCount;
+        p.query_data = Some("id name }");
+        assert!(build_query(&p).is_ok());
+    }
+
+    #[test]
+    fn null_results_are_an_empty_list_for_one_page_and_for_several() {
+        let vars = json!({});
+        let null_results =
+            |_: &str| Ok(json!({ "data": { "allWebuser": { "results": null } } }).to_string());
+        let mut p = params(&vars);
+        p.take = Some(50);
+        assert_eq!(run(&p, null_results).unwrap(), "[]");
+        p.take = Some(500);
+        assert_eq!(run(&p, null_results).unwrap(), "[]");
+    }
+
+    #[test]
+    fn a_skip_that_overflows_is_an_error_not_a_panic() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.skip = Some(u32::MAX - 5);
+        p.take = Some(500);
+        let (send, _) = fake_data_api_at(u32::MAX - 5, 1000);
+        assert_eq!(run(&p, send).unwrap_err(), "Skip is too large");
+    }
+
+    #[test]
+    fn paging_without_a_sort_field_sorts_by_id_so_pages_do_not_overlap() {
+        let vars = json!({});
+        let mut p = params(&vars);
+        p.take = Some(450);
+        let (send, received) = fake_data_api(1000);
+        run(&p, send).unwrap();
+        assert!(
+            received
+                .borrow()
+                .iter()
+                .all(|query| query.contains("sort: { order: ASC, field: id }"))
+        );
+
+        // A sort field the developer chose is kept, and a single page gets no sort at all.
+        p.sort_field = Some("name");
+        let (send, received) = fake_data_api(1000);
+        run(&p, send).unwrap();
+        assert!(
+            received
+                .borrow()
+                .iter()
+                .all(|query| query.contains("field: name }"))
+        );
+
+        p.sort_field = None;
+        p.take = Some(100);
+        let (send, received) = fake_data_api(1000);
+        run(&p, send).unwrap();
+        assert!(!received.borrow()[0].contains("sort"));
+    }
+
     /// The query the original ActionsJS step 1.7 builds (see tests/generate_query_cases.mjs).
     #[test]
     fn builds_the_same_queries_as_the_original_actionsjs_step() {
+        // Update this when tests/generate_query_cases.mjs gets more cases, so a regenerated file
+        // that quietly lost cases does not pass.
+        const EXPECTED_CASES: usize = 14;
+
         let cases: Vec<Value> =
             serde_json::from_str(include_str!("../tests/data_api_request_cases.json")).unwrap();
-        assert!(!cases.is_empty());
+        assert_eq!(cases.len(), EXPECTED_CASES);
+
         for case in cases {
             let text = |key: &str| case[key].as_str();
             let variables = &case["variables"];
@@ -1040,11 +1102,19 @@ mod tests {
                 query_data: text("queryData"),
                 output_type: OutputType::parse(text("outputType").unwrap()).unwrap(),
             };
+
+            let built = build_query(&params).unwrap();
             assert_eq!(
-                squash(&build_query(&params).unwrap().query),
-                case["expectedQuery"].as_str().unwrap(),
+                squash(&built.query),
+                text("expectedQuery").unwrap(),
                 "case {case}"
             );
+            assert_eq!(built.field, text("expectedField").unwrap(), "case {case}");
+
+            // What the step returns for the mocked Data API answer.
+            let result = extract_result(text("response").unwrap(), &built, &params).unwrap();
+            let result: Value = serde_json::from_str(&result).unwrap();
+            assert_eq!(result, case["expectedResult"], "case {case}");
         }
     }
 }

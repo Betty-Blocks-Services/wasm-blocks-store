@@ -1,13 +1,14 @@
-// Regenerates templayed_cases.json: the expected output of the ORIGINAL templayed.js for the
-// cases the Rust renderer in src/template.rs has to match.
+// Regenerates templayed_cases.json: what the ORIGINAL templayed.js renders for the cases the
+// Rust renderer in src/template.rs has to match.
 //
-//   curl -L https://raw.githubusercontent.com/Betty-Blocks-Services/Data-API-request-step/main/functions/utils/templayed.js -o templayed.mjs
+//   ./fetch_original.sh                       # the original, at a pinned commit
 //   node generate_templayed_cases.mjs
 //
-// Cases where templayed.js itself throws are skipped (and listed on stderr). The Rust side
-// deliberately differs from templayed there (see the module docs of src/template.rs).
-import templayed from "./templayed.mjs";
+// Cases where templayed.js itself throws cannot be matched; they are listed under "skipped"
+// in the output so that dropping a case is visible in the diff. After regenerating, update
+// EXPECTED_CASES in src/template.rs.
 import fs from "node:fs";
+import templayed from "./.original/functions/utils/templayed.mjs";
 
 const cases = [
   ["id: { eq: 1 }", {}],
@@ -18,7 +19,7 @@ const cases = [
   ["{{v}} / {{{v}}} / {{&v}} ", { v: "a&b\"c<d>e'f" }],
   ["[{{ids}}] [{{mixed}}] [{{empty}}] ", { ids: [1, 2, 3], mixed: [1, null, "x", [2, 3], false, true], empty: [] }],
   ["{{o}} ", { o: { a: 1 } }],
-  ["{{webuser.id}} {{webuser.tags.1}} {{webuser.tags.length}} {{webuser.name.length}} ", { webuser: { id: 1, tags: ["a", "b"], name: "héllo" } }],
+  ["{{webuser.id}} {{webuser.tags.length}} {{webuser.name.length}} ", { webuser: { id: 1, tags: ["a", "b"], name: "héllo" } }],
   ["{{a}} {{b}} {{c}} {{d}} {{e}} ", { a: 1.0, b: 1.5, c: -3, d: 100000000000.0, e: 0.1 }],
   ["a{{! a note }}b ", {}],
   ["{{#users}}<{{name}}>{{/users}} ", { users: [{ name: "a" }, { name: "b" }] }],
@@ -29,18 +30,37 @@ const cases = [
   ["line one\nline \"two\" {{x}}\nline three ", { x: "X" }],
   ["{ and: [ { id: { in: [{{ids}} ] } }, { name: { eq: \"{{ name }}\" } } ] } ", { ids: [4, 5, 6], name: "Jan" }],
   ["{{#items}}{{id}}{{^last}},{{/last}}{{/items}} ", { items: [{ id: 1 }, { id: 2, last: true }] }],
-  ["{{  spaced  }} {{ ../x }} ", { spaced: "s", x: "top" }],
+  ["{{  spaced  }} ", { spaced: "s" }],
   ["{{record}} ", { record: { id: 1, name: "N" } }],
   ["{{#a}}{{#b}}{{.}}{{../c}}{{/b}}{{/a}} ", { a: [{ b: [1, 2], c: "c" }] }],
+  // Spaces around the key in the opening and the closing tag.
+  ["{{# ids }}{{.}}{{/ ids }} ", { ids: [1, 2] }],
+  ["{{#ids }}{{.}}{{/ids }} ", { ids: [1, 2] }],
+  ["{{^ none }}x{{/ none }} ", { ids: [1] }],
 ];
 
-const out = [];
-for (const [template, vars] of cases) {
+// templayed.js throws on these; the Rust renderer deliberately does something else.
+const throwing = [
+  ["{{webuser.tags.1}} ", { webuser: { tags: ["a", "b"] } }],
+  ["{{ ../x }} ", { x: "top" }],
+  // Mismatched spacing between the opening and the closing tag: the Rust renderer accepts it.
+  ["{{#ids}}{{.}}{{/ids }} ", { ids: [1, 2] }],
+  ["{{# ids}}{{.}}{{/ids}} ", { ids: [1, 2] }],
+];
+
+const render = (template, vars) => templayed(template)(vars);
+const out = { cases: [], skipped: [] };
+for (const [template, variables] of cases) {
+  out.cases.push({ template, variables, expected: render(template, variables) });
+}
+for (const [template, variables] of throwing) {
   try {
-    out.push({ template, variables: vars, expected: templayed(template)(vars) });
-  } catch (e) {
-    console.error("JS throws, skipped:", JSON.stringify(template), String(e).slice(0, 60));
+    render(template, variables);
+    throw new Error(`expected templayed.js to throw for ${JSON.stringify(template)}`);
+  } catch (error) {
+    if (error.message.startsWith("expected templayed.js")) throw error;
+    out.skipped.push({ template, variables, reason: String(error).slice(0, 80) });
   }
 }
 fs.writeFileSync("templayed_cases.json", JSON.stringify(out, null, 2) + "\n");
-console.log(out.length, "cases");
+console.log(out.cases.length, "cases,", out.skipped.length, "skipped");
