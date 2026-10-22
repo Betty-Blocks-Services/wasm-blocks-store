@@ -7,10 +7,10 @@ sorting, sends it through the host `betty-blocks-types:data-api` interface (the 
 the ActionsJS `gql` helper), and returns the record, the list of records or the total count.
 
 **Status:** tested on a canvas against real apps: collections with nested relations, filters with
-variables and nested conditions, sorting, paging beyond 200 records, empty results, errors, and
-Record and Collection results used in loops and updates. Not yet exercised on a canvas: a Record
-query with relations, a record that does not exist (result `null`), Output type total count, and
-a Schema Model on an Object or Array result.
+variables and nested conditions, sorting, paging beyond 200 records (a Take of 500, on the build
+after the review fixes), empty results, errors, and Record and Collection results used in loops
+and updates. Not yet exercised on a canvas: a Record query with relations, a record that does not
+exist (result `null`), Output type total count, and a Schema Model on an Object or Array result.
 
 ## Options
 
