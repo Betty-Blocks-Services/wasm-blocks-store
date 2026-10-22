@@ -6,11 +6,10 @@ It builds a Data API query from a model, a record/collection type, a filter, pag
 sorting, sends it through the host `betty-blocks-types:data-api` interface (the WASM counterpart of
 the ActionsJS `gql` helper), and returns the record, the list of records or the total count.
 
-**Status:** tested on a canvas against real apps: collections with nested relations, filters with
-variables and nested conditions, sorting, paging beyond 200 records (a Take of 500, on the build
-after the review fixes), empty results, errors, and Record and Collection results used in loops
-and updates. Not yet exercised on a canvas: a Record query with relations, a record that does not
-exist (result `null`), Output type total count, and a Schema Model on an Object or Array result.
+**Status:** tested on a canvas against real apps: collections and records with nested relations,
+a record that does not exist (result `null`), Output type total count, filters with variables and
+nested conditions, sorting, paging beyond 200 records (a Take of 500, on the build after the review
+fixes), empty results, errors, and Record and Collection results used in loops and updates.
 
 ## Options
 
@@ -22,7 +21,6 @@ exist (result `null`), Output type total count, and a Schema Model on an Object 
 | Skip, Take | Take defaults to 200 when empty or 0 and is at most 5000. The Data API returns at most 200 records per request (a higher `take` is rejected), so a Take above 200 is fetched in several requests of 200 using Skip, and returned as one list. **Use a unique Sort field for that** (see below) |
 | Sort order, Sort field | Sorting is only added when a sort field is given: a property name, or a relation path like `company.name` |
 | Query data | The properties and relations to retrieve, e.g. `name company { id name }`. The record's `id` is always added (see below) |
-| Schema model | Only used when the Result is bound as an Object or Array, to type its fields. Ignored for Record, Collection, Text and Number |
 | Output type | `results` or `totalCount` for a collection; ignored for a record |
 | Result | Record or Object (one record), Collection or Array (the records) or Number (total count). Bind it as a Collection of the selected model to use the records in steps that need a collection, e.g. a loop that updates each one. The properties in Query data have to exist on that model. |
 
@@ -104,7 +102,6 @@ The step covers the same use cases. Where it differs on purpose:
     `1000000000000000000000` where JavaScript prints `1e+21`, and the last digits of integers
     beyond 2^53 can differ.
 - Option names are kebab-case (`filter-variables`, `sort-order`, ...) to match the WIT parameters.
-  The Schema Model option is passed to the step like every option but has no effect on the query.
 
 ## Tests
 
