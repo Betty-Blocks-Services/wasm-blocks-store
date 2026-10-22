@@ -90,7 +90,7 @@ bb functions publish
 `publish` prompts you to log in automatically if needed — no separate login step.
 It publishes every function in the project in one pass.
 
-## Status (2026-09-24)
+## Status (2026-10-22)
 
 Two steps for a generic OpenID Connect SSO login flow, canvas-verified end to end against a real
 Microsoft Entra tenant (full login round-trip, `claims` bound via a typed Schema Model to
@@ -101,5 +101,12 @@ Create/Update a Webuser, `Authenticate User` completing the login):
   [`docs/oidc-sso-setup.md`](docs/oidc-sso-setup.md) for setup guidance.
 
 Both are grouped as one block in [`blocks/openid-connect-sso.json`](blocks/openid-connect-sso.json).
+
+One more step, ported from the ActionsJS Data API Request step and tested on canvases of a personal
+test app and of a customer's development app (the customer app is not named here):
+
+- `functions/data-api-request/1.0/` — builds a Data API query (model, filter with `{{variables}}`,
+  paging, sorting, the properties to retrieve) and returns the record, the records or the total
+  count. See its README for the options and the differences from the ActionsJS step.
 
 See `docs/product-feedback-log.md` and `docs/developer-learnings-log.md` for the full history.

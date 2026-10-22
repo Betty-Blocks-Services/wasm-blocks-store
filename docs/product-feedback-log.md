@@ -202,3 +202,15 @@ The rebuilt binary is provably different from the original: same source, same `C
 **Still worth reporting to product as feedback, even though this instance is resolved**: the error message itself gave zero indication that a WASI-version mismatch (or anything else) was the cause — a component author without a second, known-good component to compare against would have had no path to this diagnosis.
 
 ---
+
+## The Data API rejects a `take` above 200, which no documentation states (2026-10-08)
+
+**Observed:** a Data API query with `take` of 201 or more is answered with an unsupported-request error, and a query without `take` returns 200 records. The Data API documentation lists a 5 s query timeout, 10 queries per request, 4 relation levels and read-rate limits, but not this limit. The ActionsJS Data API Request step documents "max 5,000" and clamps `take` to 5000.
+
+**Why it matters:** anyone building a query step, or reading a step's own docs, expects the documented number to work; there is no way to learn the real limit except by hitting it. A documented maximum (and a clear error naming it) would help.
+
+**How found:** testing the WASM Data API Request step against a real app.
+
+**Status:** open, not yet reported to product.
+
+---

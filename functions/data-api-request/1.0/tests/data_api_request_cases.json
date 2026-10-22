@@ -1,0 +1,287 @@
+[
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "record",
+    "filter": "id: { eq: {{id}} } ",
+    "variables": {
+      "id": "1"
+    },
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { oneWebuser(where: { id: { eq: 1 } }, skip: 0, take: 200) { id name } }",
+    "expectedField": "oneWebuser",
+    "response": "{\"data\":{\"oneWebuser\":{\"id\":1,\"name\":\"A\"}}}",
+    "expectedResult": {
+      "id": 1,
+      "name": "A"
+    }
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "totalCount",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { totalCount } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": 7
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "DESC",
+    "sortField": "name",
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200, sort: { order: DESC, field: name }) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "DESC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": 10,
+    "take": 50,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 10, take: 50) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": 0,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "record",
+    "filter": null,
+    "variables": {},
+    "skip": 3,
+    "take": 5,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { oneWebuser(where: { }, skip: 3, take: 5) { id name } }",
+    "expectedField": "oneWebuser",
+    "response": "{\"data\":{\"oneWebuser\":{\"id\":1,\"name\":\"A\"}}}",
+    "expectedResult": {
+      "id": 1,
+      "name": "A"
+    }
+  },
+  {
+    "model": "Webuser",
+    "queryType": "record",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "totalCount",
+    "expectedQuery": "query { oneWebuser(where: { }, skip: 0, take: 200) { id name } }",
+    "expectedField": "oneWebuser",
+    "response": "{\"data\":{\"oneWebuser\":{\"id\":1,\"name\":\"A\"}}}",
+    "expectedResult": {
+      "id": 1,
+      "name": "A"
+    }
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": "name: { eq: \"{{name}}\" }, id: { in: [{{ids}} ] } ",
+    "variables": {
+      "name": "Jan",
+      "ids": [
+        1,
+        2,
+        3
+      ]
+    },
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { name: { eq: \"Jan\" }, id: { in: [1,2,3 ] } }, skip: 0, take: 200) { results { id name } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Webuser",
+    "queryType": "collection",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id name company { id name }",
+    "outputType": "results",
+    "expectedQuery": "query { allWebuser(where: { }, skip: 0, take: 200) { results { id name company { id name } } } }",
+    "expectedField": "allWebuser",
+    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
+    "expectedResult": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "model": "Task",
+    "queryType": "record",
+    "filter": null,
+    "variables": {},
+    "skip": null,
+    "take": null,
+    "sortOrder": "ASC",
+    "sortField": null,
+    "queryData": "id\n  name\n  company { id name }",
+    "outputType": "results",
+    "expectedQuery": "query { oneTask(where: { }, skip: 0, take: 200) { id name company { id name } } }",
+    "expectedField": "oneTask",
+    "response": "{\"data\":{\"oneTask\":{\"id\":1,\"name\":\"A\"}}}",
+    "expectedResult": {
+      "id": 1,
+      "name": "A"
+    }
+  }
+]
