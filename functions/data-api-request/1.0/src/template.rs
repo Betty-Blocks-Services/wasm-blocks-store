@@ -57,6 +57,10 @@ pub fn render(template: &str, variables: &Value) -> Result<String, String> {
                     output.push_str(&stringify(lookup(variables, tag[1..].trim()).as_deref()));
                 }
                 Some('#' | '^' | '/') => return Err(unsupported_section(tag)),
+                // `{{.}}` and `{{../x}}` only mean something inside a section.
+                _ if tag.trim() == "." || tag.trim().starts_with("../") => {
+                    return Err(unsupported_section(tag));
+                }
                 _ => {
                     let value = stringify(lookup(variables, tag.trim()).as_deref());
                     output.push_str(&escape(&value));
@@ -79,7 +83,8 @@ pub fn render(template: &str, variables: &Value) -> Result<String, String> {
 
 fn unsupported_section(tag: &str) -> String {
     format!(
-        "The filter uses {{{{{}}}}}, but sections ({{{{#list}}}}...{{{{/list}}}}) are not supported. \
+        "The filter uses {{{{{}}}}}, which is not supported: sections ({{{{#list}}}}...{{{{/list}}}}) \
+         and the tags that only work inside them ({{{{.}}}}, {{{{../x}}}}) are not available. \
          Build the filter text in an Expression step and use that variable as the filter",
         tag.trim()
     )
@@ -276,7 +281,14 @@ mod tests {
 
     #[test]
     fn sections_are_an_error_with_a_pointer_to_the_expression_step() {
-        for template in ["{{#a}}x{{/a}}", "{{^a}}x{{/a}}", "stray {{/a}}"] {
+        for template in [
+            "{{#a}}x{{/a}}",
+            "{{^a}}x{{/a}}",
+            "stray {{/a}}",
+            "{{.}}",
+            "{{ . }}",
+            "{{../a}}",
+        ] {
             let error = render(template, &json!({ "a": [1] })).unwrap_err();
             assert!(error.contains("sections"), "{error}");
             assert!(error.contains("Expression step"), "{error}");

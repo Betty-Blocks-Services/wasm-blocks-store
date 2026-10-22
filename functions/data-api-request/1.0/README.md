@@ -86,8 +86,8 @@ The step covers the same use cases. Where it differs on purpose:
   that part of the `templayed.js` library the ActionsJS step used. **Sections are not supported**
   (`{{#list}}...{{/list}}`, `{{^x}}...{{/x}}`, `{{.}}`, `{{../x}}`): a filter that needs a loop or a
   condition, such as one `OR` condition per record of a collection, is built in an Expression step
-  and passed in as the filter (or inserted with `{{{filters}}}`). A section tag is an error, not
-  silently ignored. Differences from templayed.js for what is supported:
+  and passed in as the filter (or inserted with `{{{filters}}}`). Each of these tags is an
+  error, not silently ignored. Differences from templayed.js for what is supported:
   - a tag ends at its first `}}`, so `{{id}}}}` works and the "always put spaces in filter
     objects" advice no longer applies. A raw tag closed with two braces (`{{{x}}`) is left as text
     where templayed rendered it;
