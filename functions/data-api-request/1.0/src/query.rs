@@ -479,8 +479,8 @@ mod tests {
     fn template_errors_are_returned() {
         let vars = json!({});
         let mut p = params(&vars);
-        p.filter = Some("{{#a}}open");
-        assert!(build_query(&p).unwrap_err().contains("never closed"));
+        p.filter = Some("{{#a}}open{{/a}}");
+        assert!(build_query(&p).unwrap_err().contains("sections"));
     }
 
     #[test]
@@ -1081,7 +1081,7 @@ mod tests {
     fn builds_the_same_queries_as_the_original_actionsjs_step() {
         // Update this when tests/generate_query_cases.mjs gets more cases, so a regenerated file
         // that quietly lost cases does not pass.
-        const EXPECTED_CASES: usize = 14;
+        const EXPECTED_CASES: usize = 13;
 
         let cases: Vec<Value> =
             serde_json::from_str(include_str!("../tests/data_api_request_cases.json")).unwrap();

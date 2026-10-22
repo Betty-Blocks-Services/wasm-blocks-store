@@ -83,9 +83,13 @@ The step covers the same use cases. Where it differs on purpose:
   `order: undefined`). The model name is trimmed. An invalid Type, Sort order or Output type is an
   error.
 - **A `null` list of results** is an empty list, whether one page or several were fetched.
-- **Templating** is a Rust port of the `templayed.js` subset the ActionsJS step used (`{{x}}`
-  HTML-escaped, `{{{x}}}`/`{{&x}}` raw, `{{! comment}}`, `{{#list}}`, `{{^empty}}`, `{{.}}`,
-  `{{../x}}`). Differences from templayed.js:
+- **Templating** is flat: `{{x}}` (HTML-escaped), `{{{x}}}` and `{{&x}}` (raw), `{{! comment}}`,
+  dotted paths such as `{{webuser.id}}`, and `{{list.length}}` / `{{list.0}}`. It is a Rust port of
+  that part of the `templayed.js` library the ActionsJS step used. **Sections are not supported**
+  (`{{#list}}...{{/list}}`, `{{^x}}...{{/x}}`, `{{.}}`, `{{../x}}`): a filter that needs a loop or a
+  condition, such as one `OR` condition per record of a collection, is built in an Expression step
+  and passed in as the filter (or inserted with `{{{filters}}}`). A section tag is an error, not
+  silently ignored. Differences from templayed.js for what is supported:
   - a tag ends at its first `}}`, so `{{id}}}}` works and the "always put spaces in filter
     objects" advice no longer applies. A raw tag closed with two braces (`{{{x}}`) is left as text
     where templayed rendered it;
@@ -94,18 +98,11 @@ The step covers the same use cases. Where it differs on purpose:
   - a backslash in the template text stays a backslash (templayed turned the template into a
     JavaScript string, so `\n` became a line break and `\"` threw), and a backslash in a value is
     doubled;
-  - a missing intermediate value (`{{a.b}}` without `a`) renders empty instead of throwing, and
-    so does `{{../x}}` at the top level;
-  - a section over a non-empty string, object or number renders nothing (templayed iterated over
-    the characters of a string);
-  - an unclosed or unmatched section is reported as an error, and the rendered text may not grow
-    past 64 KB (a section that repeats a big list for every item multiplies quickly);
+  - a missing value (`{{a.b}}` without `a`) renders empty instead of throwing;
+  - the rendered text may not grow past 64 KB;
   - numbers print the shortest digits that round-trip but never in exponent form, so `1e21` is
     `1000000000000000000000` where JavaScript prints `1e+21`, and the last digits of integers
-    beyond 2^53 can differ;
-  - the closing tag of a section may have spaces around the key, as the opening tag (`{{# ids }}`
-    ... `{{/ ids }}`); the Rust renderer also accepts different spacing in the opening and the
-    closing tag, where templayed throws.
+    beyond 2^53 can differ.
 - Option names are kebab-case (`filter-variables`, `sort-order`, ...) to match the WIT parameters.
   The Schema Model option is passed to the step like every option but has no effect on the query.
 

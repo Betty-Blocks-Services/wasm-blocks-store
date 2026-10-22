@@ -34,7 +34,6 @@ const variants = [
   { type: "record", outputType: "totalCount" },
   { filter: "" },
   { filter: "name: { eq: \"{{name}}\" }, id: { in: [{{ids}} ] } ", filterVariables: [{ key: "name", value: "Jan" }, { key: "ids", value: [1, 2, 3] }] },
-  { filter: "id: { in: [{{#ids}}{{.}},{{/ids}}] } ", filterVariables: [{ key: "ids", value: [4, 5] }] },
   { queryData: "id name company { id name }" },
   { type: "record", queryData: "id\n  name\n  company { id name }", model: { name: "Task" } },
 ];

@@ -106,72 +106,6 @@
       "expected": "ab "
     },
     {
-      "template": "{{#users}}<{{name}}>{{/users}} ",
-      "variables": {
-        "users": [
-          {
-            "name": "a"
-          },
-          {
-            "name": "b"
-          }
-        ]
-      },
-      "expected": "<a><b> "
-    },
-    {
-      "template": "{{#list}}{{.}}{{../sep}}{{/list}} ",
-      "variables": {
-        "list": [
-          1,
-          2
-        ],
-        "sep": "-"
-      },
-      "expected": "1-2- "
-    },
-    {
-      "template": "{{#yes}}A{{/yes}}{{#no}}B{{/no}} ",
-      "variables": {
-        "yes": true,
-        "no": false
-      },
-      "expected": "A "
-    },
-    {
-      "template": "{{^empty}}1{{/empty}}{{^full}}2{{/full}}{{^no}}3{{/no}}{{^yes}}4{{/yes}}{{^missing}}5{{/missing}}{{^zero}}6{{/zero}}{{^blank}}7{{/blank}} ",
-      "variables": {
-        "empty": [],
-        "full": [
-          1
-        ],
-        "no": false,
-        "yes": true,
-        "zero": 0,
-        "blank": ""
-      },
-      "expected": "13567 "
-    },
-    {
-      "template": "{{#rows}}[{{#cells}}{{.}}{{/cells}}]{{/rows}} ",
-      "variables": {
-        "rows": [
-          {
-            "cells": [
-              1,
-              2
-            ]
-          },
-          {
-            "cells": [
-              3
-            ]
-          }
-        ]
-      },
-      "expected": "[12][3] "
-    },
-    {
       "template": "line one\nline \"two\" {{x}}\nline three ",
       "variables": {
         "x": "X"
@@ -191,21 +125,6 @@
       "expected": "{ and: [ { id: { in: [4,5,6 ] } }, { name: { eq: \"Jan\" } } ] } "
     },
     {
-      "template": "{{#items}}{{id}}{{^last}},{{/last}}{{/items}} ",
-      "variables": {
-        "items": [
-          {
-            "id": 1
-          },
-          {
-            "id": 2,
-            "last": true
-          }
-        ]
-      },
-      "expected": "1,2 "
-    },
-    {
       "template": "{{  spaced  }} ",
       "variables": {
         "spaced": "s"
@@ -221,50 +140,6 @@
         }
       },
       "expected": "[object Object] "
-    },
-    {
-      "template": "{{#a}}{{#b}}{{.}}{{../c}}{{/b}}{{/a}} ",
-      "variables": {
-        "a": [
-          {
-            "b": [
-              1,
-              2
-            ],
-            "c": "c"
-          }
-        ]
-      },
-      "expected": "1c2c "
-    },
-    {
-      "template": "{{# ids }}{{.}}{{/ ids }} ",
-      "variables": {
-        "ids": [
-          1,
-          2
-        ]
-      },
-      "expected": "12 "
-    },
-    {
-      "template": "{{#ids }}{{.}}{{/ids }} ",
-      "variables": {
-        "ids": [
-          1,
-          2
-        ]
-      },
-      "expected": "12 "
-    },
-    {
-      "template": "{{^ none }}x{{/ none }} ",
-      "variables": {
-        "ids": [
-          1
-        ]
-      },
-      "expected": "x "
     }
   ],
   "skipped": [
@@ -286,26 +161,6 @@
         "x": "top"
       },
       "reason": "TypeError: Cannot read properties of undefined (reading 'x')"
-    },
-    {
-      "template": "{{#ids}}{{.}}{{/ids }} ",
-      "variables": {
-        "ids": [
-          1,
-          2
-        ]
-      },
-      "reason": "SyntaxError: Private field '#ids' must be declared in an enclosing class"
-    },
-    {
-      "template": "{{# ids}}{{.}}{{/ids}} ",
-      "variables": {
-        "ids": [
-          1,
-          2
-        ]
-      },
-      "reason": "SyntaxError: Invalid or unexpected token"
     }
   ]
 }

@@ -22,30 +22,16 @@ const cases = [
   ["{{webuser.id}} {{webuser.tags.length}} {{webuser.name.length}} ", { webuser: { id: 1, tags: ["a", "b"], name: "héllo" } }],
   ["{{a}} {{b}} {{c}} {{d}} {{e}} ", { a: 1.0, b: 1.5, c: -3, d: 100000000000.0, e: 0.1 }],
   ["a{{! a note }}b ", {}],
-  ["{{#users}}<{{name}}>{{/users}} ", { users: [{ name: "a" }, { name: "b" }] }],
-  ["{{#list}}{{.}}{{../sep}}{{/list}} ", { list: [1, 2], sep: "-" }],
-  ["{{#yes}}A{{/yes}}{{#no}}B{{/no}} ", { yes: true, no: false }],
-  ["{{^empty}}1{{/empty}}{{^full}}2{{/full}}{{^no}}3{{/no}}{{^yes}}4{{/yes}}{{^missing}}5{{/missing}}{{^zero}}6{{/zero}}{{^blank}}7{{/blank}} ", { empty: [], full: [1], no: false, yes: true, zero: 0, blank: "" }],
-  ["{{#rows}}[{{#cells}}{{.}}{{/cells}}]{{/rows}} ", { rows: [{ cells: [1, 2] }, { cells: [3] }] }],
   ["line one\nline \"two\" {{x}}\nline three ", { x: "X" }],
   ["{ and: [ { id: { in: [{{ids}} ] } }, { name: { eq: \"{{ name }}\" } } ] } ", { ids: [4, 5, 6], name: "Jan" }],
-  ["{{#items}}{{id}}{{^last}},{{/last}}{{/items}} ", { items: [{ id: 1 }, { id: 2, last: true }] }],
   ["{{  spaced  }} ", { spaced: "s" }],
   ["{{record}} ", { record: { id: 1, name: "N" } }],
-  ["{{#a}}{{#b}}{{.}}{{../c}}{{/b}}{{/a}} ", { a: [{ b: [1, 2], c: "c" }] }],
-  // Spaces around the key in the opening and the closing tag.
-  ["{{# ids }}{{.}}{{/ ids }} ", { ids: [1, 2] }],
-  ["{{#ids }}{{.}}{{/ids }} ", { ids: [1, 2] }],
-  ["{{^ none }}x{{/ none }} ", { ids: [1] }],
 ];
 
 // templayed.js throws on these; the Rust renderer deliberately does something else.
 const throwing = [
   ["{{webuser.tags.1}} ", { webuser: { tags: ["a", "b"] } }],
   ["{{ ../x }} ", { x: "top" }],
-  // Mismatched spacing between the opening and the closing tag: the Rust renderer accepts it.
-  ["{{#ids}}{{.}}{{/ids }} ", { ids: [1, 2] }],
-  ["{{# ids}}{{.}}{{/ids}} ", { ids: [1, 2] }],
 ];
 
 const render = (template, vars) => templayed(template)(vars);

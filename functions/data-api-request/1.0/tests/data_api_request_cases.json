@@ -245,34 +245,6 @@
   {
     "model": "Webuser",
     "queryType": "collection",
-    "filter": "id: { in: [{{#ids}}{{.}},{{/ids}}] } ",
-    "variables": {
-      "ids": [
-        4,
-        5
-      ]
-    },
-    "skip": null,
-    "take": null,
-    "sortOrder": "ASC",
-    "sortField": null,
-    "queryData": "id name",
-    "outputType": "results",
-    "expectedQuery": "query { allWebuser(where: { id: { in: [4,5,] } }, skip: 0, take: 200) { results { id name } } }",
-    "expectedField": "allWebuser",
-    "response": "{\"data\":{\"allWebuser\":{\"results\":[{\"id\":1},{\"id\":2}],\"totalCount\":7}}}",
-    "expectedResult": [
-      {
-        "id": 1
-      },
-      {
-        "id": 2
-      }
-    ]
-  },
-  {
-    "model": "Webuser",
-    "queryType": "collection",
     "filter": null,
     "variables": {},
     "skip": null,
