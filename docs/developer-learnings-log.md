@@ -1,6 +1,6 @@
 # WASM Actions — developer learnings log (for Betty Blocks developers using WASM features)
 
-Shared, living log of non-obvious, hands-on-discovered facts worth folding into the crash-course docs in `crash-course/` for Betty Blocks developers (people building applications on BB who use its WASM Actions feature) — as opposed to feedback aimed at BB's own product developers, which is tracked separately in `product-feedback-log.md`.
+Shared, living log of non-obvious, hands-on-discovered facts worth folding into the crash-course docs in `crash-course/` for Betty Blocks developers (people building applications on BB who use its WASM Actions feature) — as opposed to feedback aimed at BB's own product developers, which is tracked separately, outside this repo.
 
 This log started in one person's local learning project and now lives here so it compounds across everyone using this repo — see `../.claude/skills/wasm-actions/SKILL.md` for how findings get logged here going forward, and `../CONTRIBUTING.md` for the discipline around verifying a claim before writing it down as fact (see the entries below marked RETRACTED/corrected for why that discipline exists).
 
@@ -45,8 +45,7 @@ phase only text is left.
   `Error: data is not defined` and `vars.data` gives `Error: vars is not defined`.
 - Types survive until the template phase: the map reaches the component as a JSON-object string with typed
   values (a number stays a number, a record is the full object). The WIT parameter is a plain `json-string`;
-  the key/value table is `function.json`-only (`"type": "Map"`), see `product-feedback-log.md`'s Map-editor
-  entry.
+  the key/value table is `function.json`-only (`"type": "Map"`).
 
 ### 3. `{{x}}` vs `{{{x}}}`
 
@@ -232,8 +231,7 @@ source-confirmed 2026-10-09; the extra edge cases replayed locally only. Open: t
   caller can go straight into the field (no escaping is needed for it to work, unlike the JSON-body case in
   the HTTP entry below), but it still counts as untrusted text.
 
-**Where this lands:** the crash course, wherever it covers the Data API step; also tracked in
-`product-feedback-log.md`.
+**Where this lands:** the crash course, wherever it covers the Data API step; also tracked as product feedback outside this repo.
 
 **Status:** confirmed on canvas, October 2026.
 
@@ -415,8 +413,7 @@ record/function shape, when replicating this pattern for a new step.
 **Fact:** spent several rounds chasing code-level theories for why `decode-and-verify-id-token`
 consistently failed to be added to any action canvas — WIT type aliases, `s64` vs `u32`, `anyOf`/
 `schemaModel` output shapes, the `base64` and `serde_json` crates individually, even an ampersand
-in the step's label. All were cleared one by one via targeted diagnostic probes (see
-`product-feedback-log.md`'s resolved entry for the full chain). It eventually turned out that a
+in the step's label. All were cleared one by one via targeted diagnostic probes (the full chain is tracked as product feedback outside this repo). It eventually turned out that a
 chunk of that testing (an entire session) was done in a **locked/higher sandbox environment that
 doesn't allow editing at all** — which produces this exact same generic "Oops! Something went
 wrong — Failed to create action step" symptom for *any* step, including Betty Blocks' own
@@ -430,7 +427,7 @@ official example already known to work elsewhere) as a first sanity check. If ev
 the environment is the problem, not the step.
 
 **The actual, confirmed root cause once testing resumed in the correct sandbox:** the same
-registration-lineage bug documented in this repo's `product-feedback-log.md` for `make-slug`/
+registration-lineage bug documented for `make-slug`/
 `slugify-text` — a specific function *name*/identity stuck in a broken state in a specific app,
 unrelated to its code. Fixed by publishing the exact same code under a brand-new function name.
 
@@ -442,8 +439,7 @@ to tell them apart (does *any* step fail, or just this one).
 
 **Update, 2026-09-23 — the registration-lineage explanation above was superseded.** The actual
 root cause, confirmed by Betty Blocks Product, was a `function.json` `description` field over 255
-characters, silently rejected as a database write — see `product-feedback-log.md`'s resolved
-entry. It wasn't a stuck function identity at all, and the original claim above that publishing
+characters, silently rejected as a database write. It wasn't a stuck function identity at all, and the original claim above that publishing
 under a new name fixed it was mistaken: the ~294-character description was carried unchanged
 through every rename, and what actually fixed it was shortening the description to 220
 characters. The "check you're in an editable sandbox first" advice in this entry still stands on
@@ -451,7 +447,7 @@ its own — that part was a real, separate finding.
 
 ---
 
-## ~~`decode-and-verify-id-token` crashes — fixed by removing `anyOf`/`schemaModel` and `s64`~~ — WRONG, tested live and did not fix it; real cause is a server-side 500, tracked in `product-feedback-log.md` (2026-09-02, corrected same day)
+## ~~`decode-and-verify-id-token` crashes — fixed by removing `anyOf`/`schemaModel` and `s64`~~ — WRONG, tested live and did not fix it; real cause is a server-side 500, tracked as product feedback (2026-09-02, corrected same day)
 
 **Fact:** `decode-and-verify-id-token` crashes with a generic "Something went wrong" the moment
 it's dragged onto a real action canvas, and disappears again on refresh — despite passing `bb
@@ -481,8 +477,7 @@ comfortably fits — valid to year 2106) and the matching Rust extraction from `
 byte-for-byte identical error text.** So this fix was wrong, or at least incomplete — the two
 `anyOf`/`schemaModel`/`s64` patterns removed here were real (no confirmed custom-function
 precedent for either, worth avoiding regardless), but they were not the cause of this crash. A
-browser Network-tab capture (see `product-feedback-log.md`'s updated "custom Wasm step... failed
-to create action step" entry) shows the actual failure is a **server-side HTTP 500** from the
+browser Network-tab capture (of the "custom Wasm step... failed to create action step" failure) shows the actual failure is a **server-side HTTP 500** from the
 `CreateActionStep` GraphQL mutation, with a generic masked message — not something visible from
 local validation, and not something either of these two `function.json`/WIT changes could have
 addressed. This matches a previously-documented, still-unresolved platform bug class in that same
@@ -499,7 +494,7 @@ front would have caught immediately.
 
 **Where this lands:** crash-course section on `function.json` option types can still note
 `anyOf`/`schemaModel`/`s64` as unprecedented-for-custom-functions and worth avoiding; the actual
-platform bug this component hit belongs in `product-feedback-log.md`, not here.
+platform bug this component hit belongs in product feedback, not here.
 
 **Update, 2026-09-24 — the "avoid `anyOf`/`schemaModel` on general principle" advice above is
 superseded.** `inspect-id-token` now ships that exact `anyOf`/`schemaModel` pattern for its
@@ -527,8 +522,7 @@ restore` against the still-staged pre-change version, rebuilt in both `wasm-bloc
 this needs fresh investigation, not a variant of this one.
 
 **Why the original diagnosis felt plausible anyway:** it was built on a real, still-true
-observation (no confirmed precedent of any custom function calling `wasi:http` itself, plus the
-documented `product-feedback-log.md` precedent for silent link failures) — the reasoning wasn't
+observation (no confirmed precedent of any custom function calling `wasi:http` itself, plus the documented precedent for silent link failures) — the reasoning wasn't
 unfounded, it was just applied to the wrong component. Worth remembering: a well-evidenced
 hypothesis about *a* problem doesn't confirm you have the *right* problem — should have confirmed
 which component was actually failing before investigating why.
@@ -708,7 +702,7 @@ handled there. A step just needs a plain option; there's no need to reach for `f
 masking tricks like the `"configuration"`/`placeholder` attempt above.
 
 **Where this lands:** both folded into `docs/testing-a-step-in-a-real-app.md`'s Troubleshooting
-section. Fact 2 is arguably also worth a `product-feedback-log.md` entry (a client-side `validate`
+section. Fact 2 is arguably also worth a product feedback entry (a client-side `validate`
 silently accepting something the live server rejects is a real tooling gap) — not added yet since
 it isn't independently confirmed; add it once someone verifies the retry.
 
@@ -829,8 +823,7 @@ The compiled guest component's import (old interface identity + old `input` shap
 **Update, 2026-09-23 — the open question is answered, and the number was wrong.** The actual
 limit is **255 characters**, not 500, confirmed directly by Betty Blocks Product. Exceeding it
 rejects the `CreateActionStep` database write outright (generic HTTP 500, no field-specific
-error) rather than truncating silently. See `product-feedback-log.md`'s resolved entry for the
-full investigation that pinned this down.
+error) rather than truncating silently.
 
 ---
 
@@ -866,11 +859,11 @@ full investigation that pinned this down.
 
 **Fact:** watched live, step by step, uploading `create-record` via an app's WASM action editor ("Add custom Wasm step" → 3-step wizard: Upload file / Configure / Review). Step 1 ("Upload file") only accepts a single `.wasm` file — there is no separate field to upload `wit/world.wit` or `function.json` anywhere in this flow. Step 2 ("Configure") then lists each exported function **auto-detected directly from the component's own WIT interface** (it showed exactly one entry, named `create-record` — the literal WIT interface/function name, kebab-case, pulled from the binary's embedded component metadata) and presents a manual **Name / Description / Icon / Icon color** form per function, pre-filled with the WIT name and "No description provided" — completely independent of whatever `function.json` says.
 
-**This explains (and revises) the very first product-feedback entry above** ("description field is not read into block or step creation"): it's not that the platform silently drops `function.json`'s `description` — it's that **this upload path doesn't consume `function.json` at all**. Naming and describing a step happens by hand, twice, in this wizard (once at the "Block Store details" step for the block as a whole, once per function at the "Configure" step) — separately from anything written into `function.json`. `function.json` appears to matter only for the CLI/CI-driven publish pipeline (the `@betty-blocks/cli`/GitHub Actions OCI-push flow seen in `native-wasm-components`/`block-store-wasm-components`), not for this interactive, human-driven upload path.
+**This explains (and revises) an earlier product feedback finding** ("description field is not read into block or step creation"): it's not that the platform silently drops `function.json`'s `description` — it's that **this upload path doesn't consume `function.json` at all**. Naming and describing a step happens by hand, twice, in this wizard (once at the "Block Store details" step for the block as a whole, once per function at the "Configure" step) — separately from anything written into `function.json`. `function.json` appears to matter only for the CLI/CI-driven publish pipeline (the `@betty-blocks/cli`/GitHub Actions OCI-push flow seen in `native-wasm-components`/`block-store-wasm-components`), not for this interactive, human-driven upload path.
 
 **Why it matters for both audiences:**
 - For BB developers (documentation): if you're hand-uploading a component via the IDE rather than through an automated publish pipeline, don't bother writing a careful `function.json` description expecting it to show up — you'll re-type it here regardless. Worth being explicit about which upload path reads `function.json` and which doesn't.
-- For product devs (feedback): having a `function.json.description` field that's silently unused on one of the two upload paths (and, per the earlier product-feedback entry, causes an opaque "Internal Server Error" in at least one case) is confusing for component authors — worth asking whether the two paths are meant to converge, and if so when.
+- For product devs (feedback): having a `function.json.description` field that's silently unused on one of the two upload paths (and, per an earlier finding, causes an opaque "Internal Server Error" in at least one case) is confusing for component authors — worth asking whether the two paths are meant to converge, and if so when.
 
 **How found:** watched live over Marcel's shoulder while going through the real upload wizard for `create-record` in `marcel-tes.bettyblocks.com` (his own test app), 2026-08-07.
 
@@ -896,7 +889,7 @@ full investigation that pinned this down.
 
 **Fact:** a custom Block Store component whose WIT `world` is named `main` AND declares at least one host `import` (e.g. `betty-blocks-utilities:data-api/data-api`) uploads/registers fine, but fails with a generic "Failed to create action step" error the moment you try to drag it onto a real action's canvas. Renaming the world to anything other than `main` (no other change) fixes it. Components with *no* imports work fine with `world main` (e.g. `slugify-text`); components *with* imports work fine as long as the world isn't named `main` (e.g. the official `store-file-base64`, whose world is named `store-file-base64`).
 
-**How found:** hit directly while building `create-record`, then isolated with a controlled test (see `product-feedback-log.md` for the full comparison and reasoning) — confirmed by renaming `create-record`'s world from `main` to `create-record-world`, rebuilding, and re-testing.
+**How found:** hit directly while building `create-record`, then isolated with a controlled test — confirmed by renaming `create-record`'s world from `main` to `create-record-world`, rebuilding, and re-testing.
 
 **Where this lands:** `WASM_Actions_Crash_Course.docx` quick-start checklist (section 10) and component-anatomy section (section 4) — recommend a distinctly-named world (e.g. matching the component's own name) as the default convention for any component with host imports, rather than the generic `main` used in the simplest pure-computation examples.
 
@@ -905,8 +898,7 @@ full investigation that pinned this down.
 **Update, 2026-09-24 — this rule is doubtful; likely coincidental, not a real mechanism.**
 `exchange-code-for-tokens` (`wasm-blocks-store/functions/exchange-code-for-tokens/1.0/`) declares
 `world main` with a real host import (`wasi:http/outgoing-handler@0.2.6`) — the exact shape this
-entry says fails — and has worked reliably on canvas since 2026-09-02. More importantly: this
-repo's own `product-feedback-log.md` (the `slugify-text`/`make-slug` elimination chain) already
+entry says fails — and has worked reliably on canvas since 2026-09-02. More importantly: an earlier elimination chain (`slugify-text`/`make-slug`) already
 established that renaming a component's WIT **world** produces a **byte-for-byte identical**
 compiled `.wasm` (confirmed via `git hash-object`) — the world's name isn't embedded in the
 compiled artifact at all. If it isn't in the binary, it cannot be what the platform reads to
@@ -922,13 +914,13 @@ once, not a confirmed causal rule.
 
 **Original (wrong) claim:** uploaded the official `store-file-base64` example (WIT params `model: model` and `property: list<property>`, using the shared `betty-blocks-utilities:types` records) as a step with no `function.json` involved. The generated option form rendered `model`/`property` as "Select variable" inputs labeled "Based on schema model ..." — this was read at the time as genuine, working native Model/Property picker UI generated straight from the WIT signature.
 
-**Correction, 2026-08-10:** that read was wrong. Following the "Based on schema model ..." link this session (`/app/schema-models/<id>`) shows it's a literal, real, **read-only Data Model** the platform auto-creates in the app's own schema — named e.g. `model_Store File Base64_1`, with a single `name: Text` property mirroring the WIT record shape (`record model { name: string }`). It is **not** a reference to any real app Data Model, and there is no adaptive Property filtering by kind (`FILE`/`IMAGE`) as the official `function.json` specifies (`"allowedKinds": ["FILE","IMAGE"]`) — because this upload path never reads `function.json`, so that meta is simply never seen. The "Select variable" picker only ever offers variables matching this synthetic shape, which nothing in a real action can produce. Full writeup: `product-feedback-log.md`, "Open question: can third-party Wasm steps ever get real native Model/Property selectors?".
+**Correction, 2026-08-10:** that read was wrong. Following the "Based on schema model ..." link this session (`/app/schema-models/<id>`) shows it's a literal, real, **read-only Data Model** the platform auto-creates in the app's own schema — named e.g. `model_Store File Base64_1`, with a single `name: Text` property mirroring the WIT record shape (`record model { name: string }`). It is **not** a reference to any real app Data Model, and there is no adaptive Property filtering by kind (`FILE`/`IMAGE`) as the official `function.json` specifies (`"allowedKinds": ["FILE","IMAGE"]`) — because this upload path never reads `function.json`, so that meta is simply never seen. The "Select variable" picker only ever offers variables matching this synthetic shape, which nothing in a real action can produce.
 
 **Why the original test didn't catch this:** the step accepted the WIT types and rendered *some* option UI without error, and the label said "Model"/"schema model" — plausible-sounding, so it was taken as confirmation without following the link to see what it actually pointed at.
 
 **Practical implication (superseded, see below):** there is currently no known way to get a genuine native Model/Property selector (backed by the app's real schema, adaptive Property list) on a third-party/Block Store component through **this upload path** — only the synthetic-schema-model fallback described above.
 
-**Update, 2026-08-10 — the real fix is to use `bb functions publish` instead of the IDE wizard.** Confirmed live: published the same, byte-identical `store-file-base64` via the CLI (checksums verified against upstream) to the `marcel-tes` app. The resulting step's MODEL option rendered as a genuine "Select model" picker listing the app's real Data Models (Role, User, Webuser); selecting `Webuser`, PROPERTY correctly adapted and showed only `file` as selectable (every non-file/image property greyed out, matching `function.json`'s `allowedKinds: ["FILE","IMAGE"]`). Field labels/info tooltips also matched `function.json` exactly. **So: the synthetic-schema-model fallback is specific to the "Add custom Wasm step" IDE wizard (which never reads `function.json`, per the entry below) — it is not a platform-wide limitation.** For any option type whose UI depends on `function.json` meta (`Model`, `Property`, `Map`, `MultilineText`, etc.), publish via `bb functions publish` (see the CLI entry further below), not the interactive wizard. Full writeup: `product-feedback-log.md`'s resolved "third-party Wasm steps *can* get real native Model/Property selectors" entry.
+**Update, 2026-08-10 — the real fix is to use `bb functions publish` instead of the IDE wizard.** Confirmed live: published the same, byte-identical `store-file-base64` via the CLI (checksums verified against upstream) to the `marcel-tes` app. The resulting step's MODEL option rendered as a genuine "Select model" picker listing the app's real Data Models (Role, User, Webuser); selecting `Webuser`, PROPERTY correctly adapted and showed only `file` as selectable (every non-file/image property greyed out, matching `function.json`'s `allowedKinds: ["FILE","IMAGE"]`). Field labels/info tooltips also matched `function.json` exactly. **So: the synthetic-schema-model fallback is specific to the "Add custom Wasm step" IDE wizard (which never reads `function.json`, per the entry below) — it is not a platform-wide limitation.** For any option type whose UI depends on `function.json` meta (`Model`, `Property`, `Map`, `MultilineText`, etc.), publish via `bb functions publish` (see the CLI entry further below), not the interactive wizard.
 
 **One caveat found in the same test:** the CLI-published step landed as an **app-scoped custom step** (tagged "Application specific" with a wrench icon in the step palette), not as a shared Block Store "dev block" — unlike what the ActionsJS `bb blocks publish`/`release` flow produces. Don't assume `bb functions publish`-ing a WASM function makes it available in other apps yet; unconfirmed whether that's a current limitation or requires an separate, not-yet-found release step.
 
@@ -967,7 +959,7 @@ This also explains `block-store-action-functions` (BB's own bundle of many Actio
 
 **Where this lands:** `WASM_Actions_Crash_Course.docx` section 3 ("How the pieces fit together") — add `bb functions publish` as a second, real publish path alongside the IDE wizard, with the table above noting where it diverges from the ActionsJS flow.
 
-**Update, 2026-08-10 — tested live, and the real-world result differs from what the endpoint name suggests.** Ran `bb functions publish` for real against the `marcel-tes` app (fresh `bb functions init --type wasm marcel-tes` project, `store-file-base64` duplicated in). Publish succeeded, `function.json` correctly produced real native Model/Property selectors (see `product-feedback-log.md`'s resolved entry) — but the resulting step showed up in the `marcel-tes` app's own step palette tagged **"Application specific"** (wrench icon), *not* under the Block Store's "My Blocks → Dev blocks" as a cross-app-installable block. So despite hitting the `/blocks/publish?type=wasm-function` endpoint (the same URL shape as ActionsJS's Block-Store-bound `bb blocks publish`), the actual behavior for WASM is app-scoped registration, matching ActionsJS's *other* command (`bb functions publish`, direct-to-app) in outcome even though it doesn't match it in endpoint. Revise the "WASM only ever has path (1)'s shape but targeting path (2)'s backend" claim above: it's closer to "path (1)'s *outcome*, via path (2)'s *URL*" — the endpoint name is not a reliable guide to where the block actually ends up. Whether WASM blocks can ever reach the shared, cross-app Block Store at all (the way ActionsJS's `bb blocks release` achieves) remains unconfirmed.
+**Update, 2026-08-10 — tested live, and the real-world result differs from what the endpoint name suggests.** Ran `bb functions publish` for real against the `marcel-tes` app (fresh `bb functions init --type wasm marcel-tes` project, `store-file-base64` duplicated in). Publish succeeded, `function.json` correctly produced real native Model/Property selectors  — but the resulting step showed up in the `marcel-tes` app's own step palette tagged **"Application specific"** (wrench icon), *not* under the Block Store's "My Blocks → Dev blocks" as a cross-app-installable block. So despite hitting the `/blocks/publish?type=wasm-function` endpoint (the same URL shape as ActionsJS's Block-Store-bound `bb blocks publish`), the actual behavior for WASM is app-scoped registration, matching ActionsJS's *other* command (`bb functions publish`, direct-to-app) in outcome even though it doesn't match it in endpoint. Revise the "WASM only ever has path (1)'s shape but targeting path (2)'s backend" claim above: it's closer to "path (1)'s *outcome*, via path (2)'s *URL*" — the endpoint name is not a reliable guide to where the block actually ends up. Whether WASM blocks can ever reach the shared, cross-app Block Store at all (the way ActionsJS's `bb blocks release` achieves) remains unconfirmed.
 
 **Status:** confirmed directly from source, then confirmed live end-to-end, 2026-08-10.
 

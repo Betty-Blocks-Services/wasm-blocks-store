@@ -39,7 +39,7 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
 
 ## Before starting any WASM Actions work, read
 
-1. **`docs/product-feedback-log.md`** and **`docs/developer-learnings-log.md`** — every confirmed
+1. **`docs/developer-learnings-log.md`** — every confirmed
    finding so far, newest first. Skim recent entries for anything touching what you're about to
    do. Some are platform bugs already root-caused with a known fix or workaround — re-discovering
    them from scratch wastes time. A few examples of investigations already closed out that don't
@@ -47,16 +47,15 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
    upload-file` import (moved to `betty-blocks-types:upload-file@3.0.0`); renaming/re-versioning
    source files does not change an already-built `.wasm` — you must actually rebuild; a
    `function.json` text field (`description` confirmed, others likely) over 255 characters gets
-   silently rejected at step-creation time, not truncated — check lengths before publishing, see
-   `docs/product-feedback-log.md`'s resolved entry. Don't take this list as complete — read the
-   logs themselves.
+   silently rejected at step-creation time, not truncated — check lengths before publishing. Don't take this list as complete — read the
+   log itself.
 
    One entry worth flagging explicitly rather than trusting as a blanket rule: `developer-
    learnings-log.md` documents a claim that a WIT world named `main` combined with a host import
    breaks step-creation — this is doubtful and likely coincidental, not a real mechanism.
    `exchange-code-for-tokens` (world `main`, imports `wasi:http/outgoing-handler`) has worked
    reliably on canvas since 2026-09-02, a live counterexample. More fundamentally,
-   `product-feedback-log.md`'s `slugify-text`/`make-slug` entry already established that renaming
+   an earlier `slugify-text`/`make-slug` elimination chain already established that renaming
    a component's WIT world produces a byte-for-byte identical compiled `.wasm` — the world's name
    isn't in the binary at all, so it can't be what the platform reads to decide success or
    failure. Don't rename a world away from `main` expecting it to fix a step-creation failure —
@@ -89,8 +88,7 @@ step" below for why this specific check matters here.
 This log has already had to publicly retract two claims that turned out to trace back only to
 secondhand meeting notes rather than a primary source, and a third that was originally wrong
 and only caught because someone followed the link and checked what it actually pointed at (see
-`docs/developer-learnings-log.md`'s "RETRACTED" entry, and `docs/product-feedback-log.md`'s
-"Correction" entries). The lesson that cost: a plausible-sounding result from one test isn't
+`docs/developer-learnings-log.md`'s "RETRACTED" entry). The lesson that cost: a plausible-sounding result from one test isn't
 confirmation — check what it actually resolved to before writing it down as settled. Concretely:
 
 - Something you tested yourself, live, with a reproducible before/after → write it as fact.
@@ -104,10 +102,11 @@ confirmation — check what it actually resolved to before writing it down as se
 ## When you confirm something new
 
 Log it immediately, in the same turn you confirm it — don't wait to be asked, and don't batch it
-for later. Add it to `docs/product-feedback-log.md` if it's feedback for Betty Blocks' product
-developers (a platform bug, gap, or confusing behavior in the WASM tooling itself), or
-`docs/developer-learnings-log.md` if it's a non-obvious fact worth other BB developers knowing
-(a gotcha, a build-tooling quirk, a corrected assumption). Match the existing entry format: what
+for later. Add it to `docs/developer-learnings-log.md` if it's a non-obvious fact worth other BB
+developers knowing (a gotcha, a build-tooling quirk, a corrected assumption). Feedback for
+Betty Blocks' product developers (a platform bug, gap, or confusing behavior in the WASM tooling
+itself) is not kept in this repo: if you keep a `docs/product-feedback-log.md`, it is local only
+and git-ignored, and is never committed. Match the existing entry format: what
 was observed/the fact, how it was found, why it matters or where it should land in the docs, and
 a status line (open / confirmed / resolved / retracted). Newest entries go at the top.
 
