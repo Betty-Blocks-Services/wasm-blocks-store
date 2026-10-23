@@ -1,9 +1,13 @@
+//! A copy of `data-api-request/1.0/src/graphql.rs`: change both.
+//!
 //! Just enough GraphQL lexing to check the text a developer typed or a variable filled in: which
 //! characters are code (not inside a string or a comment), whether the brackets pair up, and which
 //! fields a selection picks at its top level.
 //!
 //! The lexer follows the GraphQL specification, because the Data API reads the query the same way
-//! and anything this step sees differently could be used to smuggle text past the bracket check:
+//! and the error messages should agree with what it would report. The bracket check only makes the
+//! errors readable; it is not a security boundary (what a value may be is decided where it is
+//! inserted):
 //! - a `#` comment ends at `\n`, `\r` or `\r\n`;
 //! - a string ends at its closing `"`, may not contain a line break, and `\"` does not close it;
 //! - a block string runs from `"""` to the next `"""` (`\"""` is an escaped triple quote);

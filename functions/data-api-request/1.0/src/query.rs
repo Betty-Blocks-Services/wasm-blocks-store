@@ -949,8 +949,12 @@ mod tests {
     #[test]
     fn a_bare_carriage_return_cannot_end_a_comment_unnoticed() {
         let vars = json!({ "id": "1 #\r} }, skip: 0, take: 1) { results { id passwordHash } } other: allWebuser(where: { x: { eq: 1 \n" });
-        let error = failing_build("id", Some("id: { eq: {{id}} }"), &vars);
+        // A raw tag inserts the `\r` as it is: it ends the comment, so the `}` after it is code.
+        let error = failing_build("id", Some("id: { eq: {{{id}}} }"), &vars);
         assert!(error.starts_with("Filter has a closing `}`"), "{error}");
+        // An escaped tag writes it as `\r`: the comment never ends and swallows the closing brace.
+        let error = failing_build("id", Some("id: { eq: {{id}} }"), &vars);
+        assert!(error.starts_with("Filter has an opening `{`"), "{error}");
 
         let error = failing_build("name # c\r}", None, &json!({}));
         assert!(error.starts_with("Query data has a closing `}`"), "{error}");

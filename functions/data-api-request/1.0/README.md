@@ -96,6 +96,9 @@ The step covers the same use cases. Where it differs on purpose:
   - a backslash in the template text stays a backslash (templayed turned the template into a
     JavaScript string, so `\n` became a line break and `\"` threw), and a backslash in a value is
     doubled;
+  - a line break in a value inserted with `{{name}}` is written as `\n` (or `\r`), so a value from a
+    multi-line text field stays inside its quoted string; inside a block string (`"""..."""`),
+    where `\n` is not an escape, it shows as the two characters;
   - a missing value (`{{a.b}}` without `a`) renders empty instead of throwing;
   - the rendered text may not grow past 64 KB;
   - numbers print the shortest digits that round-trip but never in exponent form, so `1e21` is
@@ -104,6 +107,9 @@ The step covers the same use cases. Where it differs on purpose:
 - Option names are kebab-case (`filter-variables`, `sort-order`, ...) to match the WIT parameters.
 
 ## Tests
+
+`src/template.rs` and `src/graphql.rs` are also copied into the
+[`data-api-query`](../../data-api-query/1.0/README.md) step: when you change one, change the other.
 
 `just test` runs the unit tests. Two of them compare against the original ActionsJS code:
 `tests/generate_templayed_cases.mjs` and `tests/generate_query_cases.mjs` record what the original

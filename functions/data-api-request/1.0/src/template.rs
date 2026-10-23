@@ -1,6 +1,9 @@
+//! A copy of this file is in `data-api-query/1.0/src/template.rs`: change both.
+//!
 //! Fills `{{name}}` placeholders in the filter with values from the Variables option. This is a
 //! small, flat part of what `templayed.js` (the template library the ActionsJS step used) did:
 //! - `{{path.to.value}}`: the value, HTML-escaped (`&`, `"`, `<`, `>`) with backslashes doubled
+//!   and line breaks written as `\n` and `\r`
 //! - `{{{value}}}` and `{{&value}}`: the value as it is
 //! - `{{! comment}}`: dropped
 //! - `{{list.length}}` and `{{list.0}}` (an extension): the length or an item of a list
@@ -13,6 +16,9 @@
 //!   ActionsJS docs said to always put spaces in filter objects. `{ eq: {{id}}}}` now works.
 //! - A missing value (`{{a.b}}` where `a` is missing) renders as empty instead of throwing.
 //! - A backslash in a value is doubled, so a value cannot escape the quote of its string.
+//! - A line break in a value is written as `\n` or `\r`: a string cannot contain a raw line break,
+//!   so a value from a multi-line text field would otherwise leave its string unterminated. (In a
+//!   block string `"""..."""`, where `\n` is not an escape, it shows as those two characters.)
 //! - A `|` in the template stays a `|` (templayed's newline-escaping regex `[\n|\r\n]` also
 //!   matched `|`, so every `|` in an ActionsJS filter silently became a line break).
 
@@ -156,8 +162,11 @@ fn number_to_string(number: &serde_json::Number) -> String {
 
 fn escape(text: &str) -> String {
     // A backslash is escaped too: a value ending in `\` would otherwise escape the closing quote
-    // of the string it is placed in and let the next value out of that string.
+    // of the string it is placed in and let the next value out of that string. It has to be done
+    // first, so the backslashes added for the line breaks below are not doubled.
     text.replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
         .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('>', "&gt;")
@@ -277,6 +286,23 @@ mod tests {
         assert_eq!(render_ok("\"{{v}}\"", vars.clone()), "\"a\\\\\"");
         // Raw tags are for the developer who knows what they are doing: no escaping at all.
         assert_eq!(render_ok("\"{{{v}}}\"", vars), "\"a\\\"");
+    }
+
+    #[test]
+    fn a_line_break_in_a_value_is_written_as_an_escape() {
+        let vars = json!({ "v": "line1\nline2\r\nline3" });
+        assert_eq!(
+            render_ok("\"{{v}}\"", vars.clone()),
+            "\"line1\\nline2\\r\\nline3\""
+        );
+        // A backslash in the value is still doubled, and the escapes added for the line breaks are
+        // not.
+        assert_eq!(
+            render_ok("\"{{v}}\"", json!({ "v": "a\\\nb" })),
+            "\"a\\\\\\nb\""
+        );
+        // Raw tags insert the value untouched.
+        assert_eq!(render_ok("{{{v}}}", vars), "line1\nline2\r\nline3");
     }
 
     #[test]
