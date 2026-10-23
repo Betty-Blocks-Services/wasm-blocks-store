@@ -34,6 +34,9 @@ own product team's real convention in `block-store-wasm-components`/`native-wasm
 - Open the PR, don't merge it yourself — that's the human review step, not something to skip
   just because CI is green. If you don't have push access to open a PR, say so explicitly
   rather than silently pushing to `main` anyway or dropping the change.
+- To review a PR, or to take one from open to merge, use the
+  [`review-pr` skill](../review-pr/SKILL.md). Before opening a step PR yourself, run
+  `just step-lint`.
 
 Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
 
@@ -140,7 +143,8 @@ A step only belongs in `functions/` once it clears the bar in [CONTRIBUTING.md](
 — genuinely original (not a port of something that already ships as a native or Block Store
 step), and confirmed working on a real, live action canvas, not just locally built and unit
 tested. Read that file before proposing a new step, and don't treat "it compiles and passes
-`cargo test`" as "it's done."
+`cargo test`" as "it's done." Passing `bb functions validate` doesn't mean `function.json`
+matches the component either; `just step-lint` checks that.
 
 If several steps are meant to work together as one logical capability (not standalone), once
 every one of them individually clears that bar, group them with a manifest in
