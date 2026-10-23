@@ -1,0 +1,55 @@
+{
+  "description": "Run your own Data API query. Write the full GraphQL query yourself, so one step can read several models at once, and get the response data back as an object.",
+  "label": "Data API Query",
+  "category": "CRUD",
+  "icon": {
+    "name": "DataIcon",
+    "color": "Blue"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "MultilineText",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "query",
+      "label": "Query",
+      "info": "The Data API query, e.g. query { allWebuser(take: 5) { results { id name } } allCompany { totalCount } }. Use {{name}} to insert a value from Variables. Without query { } around it, the step adds it."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "variables",
+      "label": "Variables",
+      "info": "The values you can insert in the query with {{name}}. For text values add the quotes yourself: name: { eq: \"{{name}}\" }. Use {{{name}}} to insert text without escaping."
+    },
+    {
+      "meta": {
+        "type": "SchemaModel"
+      },
+      "name": "schema-model",
+      "label": "Schema Model",
+      "info": "Describes the shape of the response data, to type the fields of the Result. For a query like allWebuser { results { id } } the Result has the property allWebuser with the property results."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "anyOf": [
+            { "type": "Object", "schemaModel": "schema-model" }
+          ]
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "The data of the Data API response: an object with one property per field in your query."
+    }
+  ],
+  "yields": "NONE"
+}

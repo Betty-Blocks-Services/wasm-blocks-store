@@ -410,6 +410,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "data-api-query"
+version = "1.0.0"
+dependencies = [
+ "serde_json",
+ "wit-bindgen 0.58.0",
+]
+
+[[package]]
 name = "data-api-request"
 version = "1.0.0"
 dependencies = [

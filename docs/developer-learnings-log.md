@@ -8,6 +8,33 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## A `null` relation in a Data API response made a step's Object result fail with "Item '...' is not an Object'" (2026-10-23)
+
+**Fact:** a hand-written query on one record, `{ oneContact(where: { id: { eq: <id> } }) { id country { id name } state { abbreviation } parent { id } children { id } } }`, failed on the canvas with `Item 'parent' is not an Object'.` (property name changed here) when the `parent` relation was `null`. The same query without `parent { id }` worked and returned the other relations (an empty to-many relation, `children`, came back as `[]` without trouble).
+
+**How found:** two canvas runs of the `data-api-query` step on a production-zone app; the step returns the Data API's `data` as a JSON string typed with a named alias.
+
+**Not known:** which layer raises the message (it is not one of the step's own errors) or whether a Schema Model on the Result changes it. A missing record (`oneContact: null`) was not tried and is probably the same case.
+
+**Where this lands:** a platform question for the product team once isolated; until then the `data-api-query` README lists it under "Known limits".
+
+---
+
+## Data API limits that matter when you write queries by hand: 10 top-level fields per request, 4 nested layers, no aggregates, nested lists take only where/sort (2026-10-23)
+
+**Fact, from first-hand use of a production app (Marcel) and the app's introspection response:**
+- **Max 10 queries per request = 10 top-level fields, aliases included**, and exceeding it **fails the whole request** (error, no data). Evidence: a query with 13 root fields (several aliases of one `all<Model>` field) was rejected; a 7-field one with deep nesting ran. That app splits its analytics queries over 2 Data API query steps (2 requests). The documented rate limit (e.g. 200 requests/minute on live production apps, per Marcel's reading of the docs) is separate, and each step run costs one request.
+- **Nested relations: max 4 layers** (Marcel's reading of the docs, not tested by us; the deepest used so far is 3). Nested relations don't count towards the 10.
+- **No aggregates in the schema:** every `<Model>List` type has only `results` and `totalCount` (confirmed in the default introspection response). That app works around it with a precomputed metrics model. Not tried: querying for a sum/avg field, since none is declared.
+- **Nested to-many fields accept only `where` and `sort`, no `take`/`skip`** (schema). Whether such a nested list is capped is **not verified**, so counting `<relation> { id }` per parent may undercount for large relations; exact counts need a filtered root `totalCount`.
+- **BB introspection quirks:** scalar fields are reported with `kind: OBJECT` (name `String`, `Int`, ...), some empty enums come back as `enumValues: [""]` (a string, not an object), and the default query's output is mostly input types (filter/sort/relation/operator) that can be derived from the models.
+
+**Where this lands:** the `data-api-query` step README notes the 10-field limit; `data-api-request` is not affected (it sends one field per request).
+
+**Status:** the 10-field limit is from the author's own tests; the schema facts were read from an introspection response on 2026-10-23; the 4-layer limit and the nested-list cap are not verified by us.
+
+---
+
 ## Expression step: how it evaluates, how the Variables map works, what fails and why, and proven patterns (2026-10-09)
 
 **Where each part comes from, so you know how far to trust it:**
