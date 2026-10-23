@@ -69,69 +69,86 @@ fn check_balanced(query: &str, was_templated: bool, variables: &Value) -> Result
     }
 }
 
-/// The byte ranges of the closed strings (normal and block strings) in `template`, read the way
-/// `graphql::code_chars` reads them. A string that is never closed gets no range, so a tag in it
-/// counts as outside a string.
-fn string_ranges(template: &str) -> Vec<std::ops::Range<usize>> {
-    let mut ranges = Vec::new();
-    let mut index = 0;
+/// Where the value of one escaped `{{tag}}` ended up in the rendered text.
+struct EscapedValue {
+    /// The tag as written, e.g. `{{ id }}`.
+    tag: String,
+    value: String,
+    span: std::ops::Range<usize>,
+}
 
-    while index < template.len() {
-        let rest = &template[index..];
-        let Some(character) = rest.chars().next() else {
-            break;
+/// The rendered text, and where the values of its escaped `{{tags}}` are in it.
+struct Rendered {
+    text: String,
+    escaped: Vec<EscapedValue>,
+}
+
+/// Renders the template like `template::render`, tag by tag, and records where the value of each
+/// escaped tag lands in the output (raw tags, comments and plain text are copied as they are).
+///
+/// Every tag is rendered by `template::render` itself, so the values are the ones it would
+/// insert. The tag boundaries are found the way `template::render` finds them; as a safeguard the
+/// result must be exactly what `template::render` gives for the whole template, and the step fails
+/// when it is not, so a disagreement between the two can never go unnoticed.
+fn render_tracked(template: &str, variables: &Value) -> Result<Rendered, String> {
+    let mut text = String::new();
+    let mut escaped = Vec::new();
+    let mut rest = template;
+
+    while let Some(offset) = rest.find("{{") {
+        text.push_str(&rest[..offset]);
+        let tag_and_after = &rest[offset..];
+        let after = &tag_and_after[2..];
+
+        // A raw tag `{{{x}}}` is closed by `}}}`; without one the rest stays as it is.
+        let (tag_len, is_escaped) = if let Some(inner) = after.strip_prefix('{') {
+            match inner.find("}}}") {
+                Some(end) => (3 + end + 3, false),
+                None => {
+                    text.push_str(tag_and_after);
+                    rest = "";
+                    break;
+                }
+            }
+        } else {
+            match after.find("}}") {
+                Some(end) => (2 + end + 2, !after.starts_with(['&', '!', '#', '^', '/'])),
+                None => {
+                    text.push_str(tag_and_after);
+                    rest = "";
+                    break;
+                }
+            }
         };
-        match character {
-            '#' => index += rest.find(['\n', '\r']).unwrap_or(rest.len()),
-            '"' if rest.starts_with("\"\"\"") => {
-                let start = index;
-                index += 3;
-                loop {
-                    let rest = &template[index..];
-                    if rest.starts_with("\\\"\"\"") {
-                        index += 4;
-                    } else if rest.starts_with("\"\"\"") {
-                        index += 3;
-                        ranges.push(start..index);
-                        break;
-                    } else if let Some(next) = rest.chars().next() {
-                        index += next.len_utf8();
-                    } else {
-                        return ranges;
-                    }
-                }
-            }
-            '"' => {
-                let start = index;
-                index += 1;
-                loop {
-                    match template[index..].chars().next() {
-                        None | Some('\n') | Some('\r') => return ranges,
-                        Some('"') => {
-                            index += 1;
-                            ranges.push(start..index);
-                            break;
-                        }
-                        Some('\\') => {
-                            index += 1;
-                            match template[index..].chars().next() {
-                                None | Some('\n') | Some('\r') => return ranges,
-                                Some(escaped) => index += escaped.len_utf8(),
-                            }
-                        }
-                        Some(other) => index += other.len_utf8(),
-                    }
-                }
-            }
-            other => index += other.len_utf8(),
+
+        let tag = &tag_and_after[..tag_len];
+        let value = template::render(tag, variables)?;
+        let from = text.len();
+        text.push_str(&value);
+        if is_escaped {
+            escaped.push(EscapedValue {
+                tag: tag.to_string(),
+                value,
+                span: from..text.len(),
+            });
         }
+        rest = &tag_and_after[tag_len..];
     }
-    ranges
+    text.push_str(rest);
+
+    if text != template::render(template, variables)? {
+        return Err(String::from(
+            "The query could not be checked: the variables could not be placed in it. Simplify \
+             the {{...}} tags in the query",
+        ));
+    }
+    Ok(Rendered { text, escaped })
 }
 
 /// Whether an escaped `{{tag}}` value is safe to put outside quotes: a number, `true`/`false`, a
 /// name, or a comma-separated list of those (what a list value prints as). Nothing in it can
-/// close a bracket, start a string or a comment, or add a field.
+/// close a bracket, start a string or a comment, or add a field. (It can still be any name, so a
+/// tag in the place of a field, argument or operation keyword lets its value choose one.)
 fn is_plain_value(value: &str) -> bool {
     value.split(',').all(|part| {
         !part.is_empty()
@@ -141,47 +158,33 @@ fn is_plain_value(value: &str) -> bool {
     }) || value.is_empty()
 }
 
-/// Fails when an escaped `{{tag}}` outside a string would insert more than a plain value.
+/// Fails when the value of an escaped `{{tag}}` is more than a plain value and sits in code in
+/// the rendered query.
 ///
 /// `{{name}}` escapes `&`, `"`, `<`, `>` and backslashes, which keeps a value inside a string it
 /// sits in, but outside a string the value is query code: `1 }, _or: [...]` would add a filter
-/// and `1 } } other: allUser { ... }` a field on another model. Raw tags (`{{{name}}}`,
-/// `{{&name}}`) are not checked: they are for query code the builder trusts.
-fn check_unquoted_tags(template: &str, variables: &Value) -> Result<(), String> {
-    let strings = string_ranges(template);
-    let mut index = 0;
+/// and `1 } } other: allUser { ... }` a field on another model. Whether a value sits in a string
+/// is judged on the rendered text, read the way the Data API reads it (the template can read
+/// differently: a quote in a `{{! comment}}`, or a backslash in front of a tag, moves the string
+/// boundaries). Raw tags (`{{{name}}}`, `{{&name}}`) are not checked: they are for query code the
+/// builder trusts.
+fn check_unquoted_tags(rendered: &Rendered) -> Result<(), String> {
+    // An unterminated string is reported by check_balanced, which runs next and fails the step.
+    let Ok(code) = graphql::code_chars(&rendered.text) else {
+        return Ok(());
+    };
 
-    while let Some(offset) = template[index..].find("{{") {
-        let start = index + offset;
-        let after = &template[start + 2..];
-
-        // Raw tag (closed by `}}}`), comment, section or end tag: not an escaped tag.
-        if let Some(inner) = after.strip_prefix('{') {
-            index = match inner.find("}}}") {
-                Some(end) => start + 3 + end + 3,
-                None => template.len(),
-            };
+    for value in &rendered.escaped {
+        if is_plain_value(&value.value) {
             continue;
         }
-        let Some(end) = after.find("}}") else {
-            return Ok(());
-        };
-        let tag_end = start + 2 + end + 2;
-        index = tag_end;
-        if after.starts_with(['&', '!', '#', '^', '/']) {
-            continue;
-        }
-
-        let inside_string = strings
-            .iter()
-            .any(|range| range.start < start && start < range.end);
-        if inside_string {
-            continue;
-        }
-
-        let value = template::render(&template[start..tag_end], variables)?;
-        if !is_plain_value(&value) {
-            let name = template[start + 2..tag_end - 2].trim();
+        let in_code = code.iter().any(|(index, _)| value.span.contains(index));
+        if in_code {
+            let name = value
+                .tag
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .trim();
             return Err(format!(
                 "The variable {{{{{name}}}}} is used outside quotes in the query, so it may only \
                  hold a number, true or false, a name (letters, digits, _, - and .), or a \
@@ -228,9 +231,9 @@ pub fn build_query(query: &str, variables: &Value) -> Result<String, String> {
         ));
     }
 
-    check_unquoted_tags(query, variables)?;
-    let rendered = template::render(query, variables)?;
-    let rendered = rendered.trim();
+    let tracked = render_tracked(query, variables)?;
+    check_unquoted_tags(&tracked)?;
+    let rendered = tracked.text.trim();
     if rendered.is_empty() {
         return Err(String::from(
             "The query is empty after inserting the variables: check the values in Variables",
@@ -948,5 +951,92 @@ mod tests {
         let built = build_query("allWebuser { id } # the users", &json!({})).unwrap();
         assert!(built.ends_with("\n}"), "{built:?}");
         assert!(graphql::find_problem(&built).is_none());
+    }
+
+    // The check judges the rendered text, so a template that reads differently from the
+    // rendered text cannot hide an unquoted tag.
+
+    const INJECTION: &str = "1 } }) { results { id } } other: allUser { results { id email } } z: allWebuser(where: { id: { eq: 1 ";
+
+    #[test]
+    fn a_quote_in_a_tag_comment_cannot_hide_an_unquoted_tag() {
+        let template = "query { {{! note: \"id }} allWebuser(where: { id: { eq: {{id}} }, name: { eq: \"a\" } }) { results { id } } }";
+        let error = build_query(template, &json!({ "id": INJECTION })).unwrap_err();
+        assert!(error.contains("outside quotes"), "{error}");
+    }
+
+    #[test]
+    fn a_quote_in_a_tag_name_cannot_hide_an_unquoted_tag() {
+        let template = "query { {{x\"y}} allWebuser(where: { id: { eq: {{id}} }, name: { eq: \"a\" } }) { results { id } } }";
+        let error = build_query(template, &json!({ "id": INJECTION })).unwrap_err();
+        assert!(error.contains("outside quotes"), "{error}");
+    }
+
+    #[test]
+    fn a_backslash_before_a_tag_cannot_move_the_string_boundaries() {
+        let template = "query { allWebuser(where: { path: { eq: \"C:\\{{x}}\" }, name: { eq: \"{{y}}\" }, note: { eq: \"t\\\"u\" } }) { results { id } } }";
+        for x in [json!("\\"), json!(""), json!(null)] {
+            let result = build_query(template, &json!({ "x": x, "y": INJECTION }));
+            assert!(result.is_err(), "x = {x}: {result:?}");
+        }
+        // Without x the backslash escapes the quote the same way.
+        let result = build_query(template, &json!({ "y": INJECTION }));
+        assert!(result.is_err(), "{result:?}");
+    }
+
+    #[test]
+    fn a_backslash_before_a_tag_in_a_block_string_cannot_move_the_boundaries() {
+        // In the template the block string closes after the tag; in the rendered text a backslash
+        // directly before the closing quotes escapes them, and the next block string opens where
+        // this one ends.
+        let template = "query { allWebuser(where: { path: { eq: \"\"\"C:\\{{x}}\"\"\", name: { eq: \"\"\"{{y}}\"\"\" } }) { results { id } } }";
+        for x in [json!(""), json!("\\"), json!(null)] {
+            let result = build_query(template, &json!({ "x": x, "y": INJECTION }));
+            assert!(result.is_err(), "x = {x}: {result:?}");
+        }
+        let result = build_query(template, &json!({ "y": INJECTION }));
+        assert!(result.is_err(), "{result:?}");
+    }
+
+    #[test]
+    fn a_value_in_a_string_is_still_fine_when_the_template_has_odd_text_around_it() {
+        // An escaped backslash before the tag: the string closes normally.
+        let built = build_query(
+            "{ a(p: \"C:\\\\{{x}}\", n: \"{{y}}\") { id } }",
+            &json!({ "x": "d", "y": "a b } {" }),
+        )
+        .unwrap();
+        assert_eq!(built, "{ a(p: \"C:\\\\d\", n: \"a b } {\") { id } }");
+        // A quote inside a tag comment does not matter when the tags are in strings.
+        let built = build_query(
+            "{ a(n: \"{{y}}\") { id } } {{! it's a \"note }}",
+            &json!({ "y": "a b" }),
+        )
+        .unwrap();
+        assert!(built.starts_with("{ a(n: \"a b\") { id } }"), "{built}");
+    }
+
+    #[test]
+    fn the_tracked_rendering_is_exactly_the_normal_rendering() {
+        let variables = json!({ "a": "x & y", "b": [1, 2], "c": null, "d": { "e": "z" } });
+        for template in [
+            "plain",
+            "{{a}} {{{a}}} {{&a}} {{! c }} {{b}} {{c}} {{d.e}} {{missing}}",
+            "unterminated {{a",
+            "raw unterminated {{{a}}",
+            "{{{a}}}}} {{{{a}}}}",
+            "{{}} {{ }} {{ a }}",
+            "\"{{a}}\" # {{a}}\n{{{b}}}",
+        ] {
+            let tracked = render_tracked(template, &variables).unwrap();
+            assert_eq!(
+                tracked.text,
+                template::render(template, &variables).unwrap(),
+                "{template}"
+            );
+        }
+        // The same errors as the normal rendering.
+        assert!(render_tracked("{{#a}}", &variables).is_err());
+        assert!(render_tracked("{{.}}", &variables).is_err());
     }
 }
