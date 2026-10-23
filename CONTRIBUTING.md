@@ -121,8 +121,7 @@ entirely through labels, info text, and error messages. Design for that:
 - [ ] **Manifest matches the component**: `just step-lint` passes. It checks what
       `bb functions validate` does not: that `function.json` matches the WIT (option and
       parameter names, outputs), that text fields stay under the 255-character limit, that
-      nothing returns an `option<...>`, and that `function.json` isn't a symlink. CI does not
-      run it yet.
+      nothing returns an `option<...>`, and that `function.json` isn't a symlink. CI runs it too.
 - [ ] **Versioned correctly**: new step starts at `1.0/`. A breaking change to an
       existing step's interface gets a new version directory (e.g. `2.0/`) rather
       than mutating `1.0/` in place, so apps already using it aren't broken under
@@ -181,15 +180,15 @@ retracted/corrected entries already in those logs for why that distinction matte
 
 ## Review
 
-Another contributor should actually pull the branch, build it, and ideally publish
-it to their own app before approving — not just read the diff. This is a small,
-early repo; a few minutes of real testing per PR is cheap now and expensive to skip
-once there are dozens of steps depending on each other's conventions being right.
+A review means actually pulling the branch and running it before approving — not just reading
+the diff. This is a small, early repo; a few minutes of real testing per PR is cheap now and
+expensive to skip once there are dozens of steps depending on each other's conventions being
+right.
 
-A Claude Code session in this clone can do the preparation and a first pass: say "handle the
-PR" and the [`review-pr` skill](.claude/skills/review-pr/SKILL.md) triages it against the
-checklists above, runs the baseline and `just step-lint`, reviews it (with scoped reviewers
-only for a step with real logic), and posts its findings as a review that another agent can act
-on. It never posts, pushes or merges without being told to. What it cannot do is the part above:
-pulling the branch, building it and publishing it to a real app. That stays a human step, and
-the review says so.
+The `review-pr` skill does that review. In a Claude Code session in this clone, say "handle the
+PR": it checks out the branch, runs the same checks as CI, reviews the change against the
+checklists above (with scoped reviewers only for a step with real logic), and posts its findings
+as a review that another agent can act on. See [`.claude/skills/review-pr/SKILL.md`](.claude/skills/review-pr/SKILL.md).
+It never posts, pushes or merges without being told to. How a step behaves on a real canvas is
+the author's evidence (the live-test item above): the review checks that the PR names the app
+and the paths that were tested, and lists the ones that were not.

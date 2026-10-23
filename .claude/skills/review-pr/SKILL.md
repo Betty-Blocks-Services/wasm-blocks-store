@@ -63,9 +63,9 @@ Report the cost at the end (section 8).
    is unclear.
 4. **Baseline, step lane only, by you (commands):** exactly what CI runs, in the worktree
    (`target/` and `*.wasm` are gitignored): `RUSTFLAGS="--deny warnings" just format-check`,
-   `just build`, `just quality-check`, `just test`, plus `just step-lint` (function.json limits
-   and `info`, option/WIT name match, `option<...>` outputs, symlinked `function.json`, tracked
-   `.wasm`; if the recipe does not exist yet, check these by hand). `just test` builds first
+   `just step-lint` (function.json limits and `info`, option/WIT name match, `option<...>`
+   outputs, symlinked `function.json`, tracked `.wasm`; on a branch that predates it, check these
+   by hand), `just build`, `just quality-check`, `just test`. `just test` builds first
    (the step tests need the compiled `.wasm`), so a bare `cargo test` is only a fallback for one
    crate's unit tests. **`bb functions validate` is not a substitute:** it only checks the
    generic ActionsJS schema and that a `.wasm` exists, never `function.json` against the WIT
@@ -137,10 +137,10 @@ scoring).
 - "Label each finding **confirmed** (reproduced, show the probe) or **suspected**, with
   file:line and a failing input -> wrong output."
 
-**Human-only checks:** the canvas test, and "pull it, build it, publish it to your own app"
-(`CONTRIBUTING.md`, Review), cannot be done by an agent. Do not claim them. Check that the PR
-states which app and which paths were tested and which were not, and list untested paths as open
-items that need a human.
+**Live-test evidence:** the canvas test is the author's checklist item, and you cannot run it,
+so do not claim it. Check that the PR names the app and the paths that were tested and the ones
+that were not, and list the untested paths as open items (the user decides whether they block
+the merge).
 
 ## 4. Verify and score, then report
 1. Merge duplicates across reviewers into one finding.
@@ -195,7 +195,7 @@ When the user says the PR was updated:
 1. `gh pr view <n> --json state,mergeable,mergeStateStatus,headRefOid,statusCheckRollup`: CI
    green, mergeable, and the head is the SHA you reviewed (otherwise review the new commits).
    Check the merge-order note from triage.
-2. Say which human-only checks are done and which are not, and merge only if the user confirms
+2. Say what the PR claims was tested live and what was not, and merge only if the user confirms
    they accept that.
 3. `gh pr merge <n> --merge --match-head-commit <sha>` (merge commit is the repo convention, see
    `CONTRIBUTING.md`). Merged branches are deleted automatically; verify with `gh pr view` and

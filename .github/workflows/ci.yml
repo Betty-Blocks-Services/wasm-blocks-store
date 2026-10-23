@@ -27,6 +27,9 @@ jobs:
       - name: "formatting-check"
         run: RUSTFLAGS="--deny warnings" just format-check
 
+      - name: "step-lint"
+        run: just step-lint
+
       - name: "compile-check"
         run: RUSTFLAGS="--deny warnings" just build
 
