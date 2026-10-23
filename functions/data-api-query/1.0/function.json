@@ -16,7 +16,7 @@
       },
       "name": "query",
       "label": "Query",
-      "info": "The Data API query, e.g. query { allWebuser(take: 5) { results { id name } } allCompany { totalCount } }. Use {{name}} to insert a value from Variables. Without query { } around it, the step adds it."
+      "info": "The Data API query, e.g. query { allWebuser(take: 5) { results { id name } } allCompany { totalCount } }. Insert values from Variables with {{name}}; outside quotes it only takes plain values. Without query { } around it, the step adds it."
     },
     {
       "meta": {
@@ -24,7 +24,7 @@
       },
       "name": "variables",
       "label": "Variables",
-      "info": "The values you can insert in the query with {{name}}. For text values add the quotes yourself: name: { eq: \"{{name}}\" }. Use {{{name}}} to insert text without escaping."
+      "info": "Values for {{name}} in the query. Inside quotes (\"{{name}}\") any text is safe; outside quotes only numbers, true/false and names. {{{name}}} inserts text unchecked: use it only for query code you trust."
     },
     {
       "meta": {

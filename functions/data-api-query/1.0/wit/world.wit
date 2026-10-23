@@ -18,8 +18,9 @@ interface data-api-query {
     ) -> result<json-string, string>;
 }
 
-// Deliberately not named `main`: a world named `main` that also imports a host interface fails
-// to be added to the canvas (see docs/developer-learnings-log.md, 2026-08).
+// Named after the step, not `main`. (An early note claimed a world called `main` that imports a
+// host interface cannot be added to a canvas; later evidence says that rule is doubtful, see
+// docs/developer-learnings-log.md. The name has no other effect.)
 world data-api-query-world {
     import betty-blocks-types:data-api/data-api@3.0.0;
 

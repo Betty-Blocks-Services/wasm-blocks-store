@@ -1,5 +1,5 @@
-//! A copy of `data-api-request`'s `template.rs`: only the wording of two error messages ("query"
-//! instead of "filter") differs. Keep the two in sync.
+//! A copy of `data-api-request`'s `template.rs`. Only the wording differs: two error messages and
+//! some doc comments say "query" where the original says "filter". Keep the two in sync.
 //!
 //! Fills `{{name}}` placeholders in the query with values from the Variables option. This is a
 //! small, flat part of what `templayed.js` (the template library the ActionsJS step used) did:
@@ -305,10 +305,10 @@ mod tests {
         assert!(error.contains("longer than 64 KB"), "{error}");
     }
 
-    /// The expected output of the original templayed.js (see tests/generate_templayed_cases.mjs).
+    /// The expected output of the original templayed.js (see data-api-request/1.0/tests/generate_templayed_cases.mjs, which regenerates the fixture).
     #[test]
     fn matches_the_original_templayed_js() {
-        // Update this when tests/generate_templayed_cases.mjs gets more cases, so a regenerated
+        // Update this when data-api-request/1.0/tests/generate_templayed_cases.mjs gets more cases, so a regenerated
         // file that quietly lost cases does not pass.
         const EXPECTED_CASES: usize = 15;
         const EXPECTED_SKIPPED: usize = 2;

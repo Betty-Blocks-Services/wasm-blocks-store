@@ -5,7 +5,8 @@ mod bindings {
     export!(DataApiQuery);
 }
 
-// A copy of `data-api-request`'s `graphql.rs`; this step does not use all of it.
+// A copy of `data-api-request`'s `graphql.rs`; this step does not use all of it (`selects_id` and
+// `inside_outer_braces` are only used by the other step).
 #[allow(dead_code)]
 mod graphql;
 mod query;
@@ -23,12 +24,7 @@ impl Guest for DataApiQuery {
         variables: JsonString,
         _schema_model: Option<String>,
     ) -> Result<JsonString, String> {
-        let variables: serde_json::Value = if variables.trim().is_empty() {
-            serde_json::json!({})
-        } else {
-            serde_json::from_str(&variables)
-                .map_err(|error| format!("The variables are not valid JSON: {error}"))?
-        };
+        let variables = query::parse_variables(&variables)?;
 
         query::run(&query, &variables, |query| {
             request(&helper_context, query, "{}")
