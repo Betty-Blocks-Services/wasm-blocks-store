@@ -10,7 +10,7 @@ whole input, so one step can read several models at once. It sends the query thr
 error for an unknown field, an unbalanced bracket, `{{variables}}` in a quoted string, unquoted and next to
 closing braces, and a raw `{{{variable}}}` that ends in a backslash. Not tried live (unit-tested only):
 sections, a missing record, a value with a quote, `{{{...}}}` with a quote in the middle, the refusal of
-unsafe values outside quotes, and the error texts added after the review. See "Known limits" below for
+unsafe values outside quotes, and the error texts added after the review. A document with two operations and a direct mutation were tried live and are refused by the Data API (see "Behaviour"); the refusal of an unsafe value outside quotes was also tried live. See "Known limits" below for
 two things that did not behave as hoped.
 
 ## Options
@@ -89,9 +89,12 @@ variables. Use `{{name}}` instead.
 - **Not a Record or Collection.** The Result is an object, not a Betty Blocks Record or Collection
   of a model: the step does not know which model(s) the query reads. Use `data-api-request` to feed
   the records of one model into steps that need a Collection or Record.
-- **Mutations and several operations:** a `mutation` is sent as written, and so is a document with
-  more than one operation. What the Data API does with a document of several operations has not been
-  tested. The step is meant for reading: do not build a mutation from values an end user can type.
+- **Mutations and several operations** are sent as written, and the Data API does not run them:
+  a document with two operations failed on the canvas with `gRPC call failed: status: Unknown, message:
+  "Internal Server Error"` (no detail), and a direct mutation such as `updatePerson` is refused, because
+  the Data API only accepts mutations that call an action (`mutation { action(id: "...", input: ...) }`).
+  Running an action that way was not tried. The step sends no GraphQL variables, so an `$input`
+  variable would not be filled in. The step is meant for reading.
 - **Variables must be a map** of names to values. An empty Variables option means none.
 - **Data API limits apply.** A request may contain at most 10 top-level fields, aliases included;
   more fails the whole request with an error, so split a bigger query over several steps. Every

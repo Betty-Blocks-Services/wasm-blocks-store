@@ -8,6 +8,22 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## The Data API does not run a document with two operations (opaque "Internal Server Error") and refuses direct mutations (2026-10-23)
+
+**Fact:**
+- A document with two named operations sent through the Data API Query step, `query A { onePerson(where: { id: { eq: <id> } }) { id } }` followed by `query B { allCountry { totalCount } }`, failed with `gRPC call failed: status: Unknown, message: "Internal Server Error", details: []`. No data came back and the message does not say what was wrong, so a builder cannot tell a second operation from a server fault.
+- A direct mutation, `mutation { updatePerson(id: <id>, input: { webBio: "x" }) { id webBio } }`, was refused by the Data API. Per Marcel, the Data API does not accept direct mutations at all: mutations only go through actions, as `mutation { action(id: "<action id>", input: $input) }`. The exact refusal text was not recorded.
+
+**How found:** run on the canvas through the `data-api-query` step on a production-zone app, to answer a review question: can text injected into a query run a second operation or a mutation? On this evidence it cannot: the two-operation document failed and the mutation was refused. The step sends no GraphQL variables (`request(..., "{}")`), so an `$input` variable for the action mutation would not be filled in.
+
+**Not tested:** running an action through `mutation { action(id: "...", input: ...) }` from the step, and whether a document with one operation and unused extra fragments or a named operation among several is accepted.
+
+**Where this lands:** the `data-api-query` README, "Behaviour".
+
+**Status:** both outcomes seen firsthand on the canvas on 2026-10-23.
+
+---
+
 ## A `null` relation in a Data API response made a step's Object result fail with "Item '...' is not an Object'" (2026-10-23)
 
 **Fact:** a hand-written query on one record, `{ oneContact(where: { id: { eq: <id> } }) { id country { id name } state { abbreviation } parent { id } children { id } } }`, failed on the canvas with `Item 'parent' is not an Object'.` (property name changed here) when the `parent` relation was `null`. The same query without `parent { id }` worked and returned the other relations (an empty to-many relation, `children`, came back as `[]` without trouble).
