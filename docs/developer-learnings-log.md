@@ -51,7 +51,7 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 **Where this lands:** the `data-api-query` step README notes the 10-field limit; `data-api-request` is not affected (it sends one field per request).
 
-**Status:** the 10-field limit is from the author's own tests; the schema facts were read from an introspection response on 2026-10-23; the 4-layer limit and the nested-list cap are not verified by us.
+**Status:** the limit of 10 is from the docs as Marcel reads them, and the 13-field query failing and the 7-field query running are from his own tests, with the boundary (10 runs, 11 fails) not tested; the schema facts were read from an introspection response on 2026-10-23; the 4-layer limit and the nested-list cap are not verified by us.
 
 ---
 
