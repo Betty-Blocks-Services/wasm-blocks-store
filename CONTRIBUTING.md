@@ -118,6 +118,11 @@ entirely through labels, info text, and error messages. Design for that:
       run directly against `wasm-blocks-store` itself.
 - [ ] **Formatted and lint-clean**: `just format-check` and `just quality-check`
       both pass (CI enforces this, but check locally first).
+- [ ] **Manifest matches the component**: `just step-lint` passes. It checks what
+      `bb functions validate` does not: that `function.json` matches the WIT (option and
+      parameter names, outputs), that text fields stay under the 255-character limit, that
+      nothing returns an `option<...>`, and that `function.json` isn't a symlink. CI does not
+      run it yet.
 - [ ] **Versioned correctly**: new step starts at `1.0/`. A breaking change to an
       existing step's interface gets a new version directory (e.g. `2.0/`) rather
       than mutating `1.0/` in place, so apps already using it aren't broken under
@@ -180,3 +185,11 @@ Another contributor should actually pull the branch, build it, and ideally publi
 it to their own app before approving — not just read the diff. This is a small,
 early repo; a few minutes of real testing per PR is cheap now and expensive to skip
 once there are dozens of steps depending on each other's conventions being right.
+
+A Claude Code session in this clone can do the preparation and a first pass: say "handle the
+PR" and the [`review-pr` skill](.claude/skills/review-pr/SKILL.md) triages it against the
+checklists above, runs the baseline and `just step-lint`, reviews it (with scoped reviewers
+only for a step with real logic), and posts its findings as a review that another agent can act
+on. It never posts, pushes or merges without being told to. What it cannot do is the part above:
+pulling the branch, building it and publishing it to a real app. That stays a human step, and
+the review says so.

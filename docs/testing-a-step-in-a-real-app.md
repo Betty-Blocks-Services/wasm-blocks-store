@@ -74,6 +74,8 @@ authenticating — just stop before confirming any actual publish.)
    whose `function.json` is a symlink. It won't be listed, and the command still reports "all
    valid" (confirmed with CLI 26.1.0, see `developer-learnings-log.md`). `cargo` follows the
    `src/`/`wit/` symlinks fine. If you change `function.json` in `wasm-blocks-store`, re-copy it.
+   Run `just step-lint` in `wasm-blocks-store` first: it catches a symlinked `function.json`, and
+   a `function.json` that doesn't match the WIT, neither of which `validate` reports.
 
 4. **Write a standalone `Cargo.toml` and `Justfile` for that function.** `wasm-blocks-store` is a
    Cargo workspace, so its functions use `dep.workspace = true` shortcuts and share a root
