@@ -719,10 +719,15 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_in_a_comment_is_checked_because_a_line_break_ends_the_comment() {
+    fn a_value_in_a_comment_cannot_end_it_with_a_line_break() {
+        // A line break in a value is written as `\n`, so the comment cannot end where the value
+        // wants it to, and the value stays in the comment.
         let template = "{ a { id } } # {{v}}";
-        let error = build_query(template, &json!({ "v": "x\n} } { y" })).unwrap_err();
-        assert!(error.contains("outside quotes"), "{error}");
+        for value in ["x\n} } { y", "x\r} } { y", "x\r\n} } { y"] {
+            let built = build_query(template, &json!({ "v": value })).unwrap();
+            assert!(graphql::find_problem(&built).is_none(), "{built}");
+            assert_eq!(built.lines().count(), 1, "{built}");
+        }
     }
 
     #[test]
