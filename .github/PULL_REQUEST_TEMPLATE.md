@@ -23,7 +23,7 @@
 - [ ] Unit tests pass (`just test`)
 - [ ] Actually published (`bb functions publish`) and dragged onto a real action canvas —
       not just built and unit-tested locally
-- [ ] `just format-check` and `just quality-check` pass
+- [ ] `just format-check`, `just quality-check` and `just step-lint` pass
 - [ ] Versioned correctly (new step at `1.0/`; breaking change to an existing step gets a new
       version directory, not an in-place edit)
 

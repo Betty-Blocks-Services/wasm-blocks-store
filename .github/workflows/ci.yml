@@ -27,6 +27,12 @@ jobs:
       - name: "formatting-check"
         run: RUSTFLAGS="--deny warnings" just format-check
 
+      - name: "step-lint"
+        run: just step-lint
+
+      - name: "step-lint-tests"
+        run: python3 scripts/test_step_lint.py
+
       - name: "compile-check"
         run: RUSTFLAGS="--deny warnings" just build
 

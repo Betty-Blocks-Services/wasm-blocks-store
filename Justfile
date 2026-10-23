@@ -54,6 +54,15 @@ quality-check:
 	fi
 	cargo clippy --all-targets -- -D warnings
 
+step-lint:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ -z "$(just index)" ]; then
+		echo "No functions in functions/ yet — nothing to lint."
+		exit 0
+	fi
+	python3 scripts/step-lint.py functions
+
 clean:
 	cargo clean
 

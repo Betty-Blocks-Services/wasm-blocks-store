@@ -58,6 +58,8 @@ functions/
 blocks/                   # forward-looking: manifests grouping related steps — see blocks/README.md
 docs/                     # shared knowledge — see docs/README.md
 .claude/skills/wasm-actions/  # auto-loads that knowledge into Claude Code sessions in this repo
+.claude/skills/review-pr/     # how to handle a PR: triage, review, re-review, merge (say "handle the PR")
+scripts/                  # step-lint.py (`just step-lint`) and its tests
 ```
 
 ## Prerequisites
@@ -78,6 +80,8 @@ just test             # build, then cargo test (runs each function's tests/mod.r
 just format            # cargo fmt
 just format-check      # cargo fmt --check (what CI runs)
 just quality-check     # cargo clippy --all-targets -D warnings
+just step-lint         # checks function.json against the WIT and the platform's text limits
+                      # (scripts/step-lint.py; tests: python3 scripts/test_step_lint.py)
 ```
 
 ## Try a step in your own app
