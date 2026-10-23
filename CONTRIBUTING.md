@@ -192,5 +192,6 @@ PR": it checks out the branch, runs the same checks as CI, reviews the change ag
 checklists above (with scoped reviewers only for a step with real logic), and posts its findings
 as a review that another agent can act on. See [`.claude/skills/review-pr/SKILL.md`](.claude/skills/review-pr/SKILL.md).
 It never posts, pushes or merges without being told to. How a step behaves on a real canvas is
-the author's evidence (the live-test item above): the review checks that the PR names the app
-and the paths that were tested, and lists the ones that were not.
+the author's evidence (the live-test item above): the review checks that the PR says what kind of app
+it was tested on (and names no customer or app) and the paths that were tested, and lists the ones
+that were not.
