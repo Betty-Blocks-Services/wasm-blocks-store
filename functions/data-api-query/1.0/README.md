@@ -12,7 +12,8 @@ closing braces, a raw `{{{variable}}}` that ends in a backslash, an unsafe value
 next to a plain one (works), and a document with two operations and a direct mutation (both refused or
 failed on the Data API side, see "Behaviour"). Unit-tested only: sections, a missing record, a value with
 a quote, `{{{...}}}` with a quote in the middle, templates that read differently from the rendered query
-(a quote in a `{{! comment}}`, a backslash in front of a tag), and the error texts added after the
+(a quote in a `{{! comment}}`, a backslash in front of a tag), a value that starts a `#` comment or
+ends in a backslash inside a block string (also fuzzed: millions of generated templates), and the error texts added after the
 review. See "Known limits" below for two things that did not behave as hoped.
 
 ## Options
@@ -44,6 +45,12 @@ query text, so what a value may be depends on where its tag sits:**
   those (a list value prints as `1,2,3`, so `in: [{{ids}}]` works). Anything else fails the step with an
   error that names the variable. Without this, a value like `7 } }) { ... } other: allUser { ... }` typed by an end
   user could add filters or fields on other models.
+- **Anywhere:** the step also refuses a value that would change how the rest of the query is read:
+  one that starts a `#` comment (it hides the rest of its line, which can drop a filter the builder
+  wrote) and one that ends in a backslash inside a `"""` block string (doubling the backslash does
+  nothing there, so the string runs on into the next one). The error names the variable. This is
+  checked on the finished query, read the way the GraphQL specification does, by reading it again
+  with the values replaced by a harmless `a`: the code outside the values has to be the same.
 - **Raw tags** (`{{{name}}}` and `{{&name}}`) insert the value untouched and are not checked. Use them only
   for query code you wrote or trust, never for text an end user can type.
 - **A name is still a name.** A tag in the place of a field, an argument or an operation keyword

@@ -122,9 +122,9 @@ fn render_tracked(template: &str, variables: &Value) -> Result<Rendered, String>
     Ok(Rendered { text, escaped })
 }
 
-/// Whether an escaped `{{tag}}` value is safe to put outside quotes: a number, `true`/`false`, a
-/// name, or a comma-separated list of those (what a list value prints as). Nothing in it can
-/// close a bracket, start a string or a comment, or add a field. (It can still be any name, so a
+/// Whether an escaped `{{tag}}` value is plain: a number, `true`/`false`, a name, or a
+/// comma-separated list of those (what a list value prints as). Nothing in it can close a bracket,
+/// start a string or a comment, or add a field, wherever it is put. (It can still be any name, so a
 /// tag in the place of a field, argument or operation keyword lets its value choose one.)
 fn is_plain_value(value: &str) -> bool {
     value.split(',').all(|part| {
@@ -135,33 +135,80 @@ fn is_plain_value(value: &str) -> bool {
     }) || value.is_empty()
 }
 
-/// Fails when the value of an escaped `{{tag}}` is more than a plain value and sits in code in
-/// the rendered query.
+/// The finished query with each non-plain escaped value either as it is (`hostile`) or replaced
+/// by the harmless text `a`, and what its code looks like outside those values: the code
+/// characters of the query (strings and comments are not code) that are not part of such a value.
+/// `None` when the query has a string that is never closed.
+fn code_outside_values(rendered: &Rendered, hostile: impl Fn(usize) -> bool) -> Option<String> {
+    let mut text = String::new();
+    let mut spans = Vec::new();
+    let mut copied = 0;
+
+    for (index, value) in rendered.escaped.iter().enumerate() {
+        if is_plain_value(&value.value) {
+            continue;
+        }
+        text.push_str(&rendered.text[copied..value.span.start]);
+        let from = text.len();
+        text.push_str(if hostile(index) { &value.value } else { "a" });
+        spans.push(from..text.len());
+        copied = value.span.end;
+    }
+    text.push_str(&rendered.text[copied..]);
+
+    let code = graphql::code_chars(&text).ok()?;
+    Some(
+        code.into_iter()
+            .filter(|(at, _)| {
+                // The spans are in order and do not overlap: look the one at `at` up by binary search.
+                let next = spans.partition_point(|span| span.end <= *at);
+                !spans.get(next).is_some_and(|span| span.start <= *at)
+            })
+            .map(|(_, character)| character)
+            .collect(),
+    )
+}
+
+/// Fails when an escaped `{{tag}}` value could change how the query is read.
 ///
 /// `{{name}}` escapes `&`, `"`, `<`, `>` and backslashes, which keeps a value inside a string it
-/// sits in, but outside a string the value is query code: `1 }, _or: [...]` would add a filter
-/// and `1 } } other: allUser { ... }` a field on another model. Whether a value sits in a string
-/// is judged on the rendered text, read the way the Data API reads it (the template can read
+/// sits in, but a value that is not plain (see `is_plain_value`) can still do harm in two ways, and
+/// both are checked on the finished query, read the way the Data API reads it (a template can read
 /// differently: a quote in a `{{! comment}}`, or a backslash in front of a tag, moves the string
-/// boundaries). Raw tags (`{{{name}}}`, `{{&name}}`) are not checked: they are for query code the
-/// builder trusts.
+/// boundaries):
+/// 1. it is query code itself: outside a string, `1 }, _or: [...]` adds a filter and
+///    `1 } } other: allUser { ... }` a field on another model;
+/// 2. it changes how the rest of the query is read: a value that starts a `#` comment hides the
+///    builder's text after it on the same line, and a value ending in a backslash inside a block
+///    string (where doubling the backslash does nothing) runs the string on into the next one.
+///    This is checked by reading the query again with every such value replaced by `a`: the
+///    code outside the values must be the same.
+///
+/// Raw tags (`{{{name}}}`, `{{&name}}`) are not checked: they are for query code the builder
+/// trusts.
 fn check_unquoted_tags(rendered: &Rendered) -> Result<(), String> {
     // An unterminated string is reported by check_balanced, which runs next and fails the step.
     let Ok(code) = graphql::code_chars(&rendered.text) else {
         return Ok(());
     };
+    let non_plain: Vec<usize> = (0..rendered.escaped.len())
+        .filter(|&index| !is_plain_value(&rendered.escaped[index].value))
+        .collect();
+    let name = |index: usize| {
+        rendered.escaped[index]
+            .tag
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .trim()
+            .to_string()
+    };
 
-    for value in &rendered.escaped {
-        if is_plain_value(&value.value) {
-            continue;
-        }
-        let in_code = code.iter().any(|(index, _)| value.span.contains(index));
-        if in_code {
-            let name = value
-                .tag
-                .trim_start_matches('{')
-                .trim_end_matches('}')
-                .trim();
+    // 1. A value that is code.
+    for &index in &non_plain {
+        let span = &rendered.escaped[index].span;
+        let first = code.partition_point(|(at, _)| *at < span.start);
+        if code.get(first).is_some_and(|(at, _)| *at < span.end) {
+            let name = name(index);
             return Err(format!(
                 "The variable {{{{{name}}}}} is used outside quotes in the query, so it may only \
                  hold a number, true or false, a name (letters, digits, _, - and .), or a \
@@ -170,7 +217,33 @@ fn check_unquoted_tags(rendered: &Rendered) -> Result<(), String> {
             ));
         }
     }
-    Ok(())
+
+    // 2. A value that changes how the rest of the query is read.
+    if non_plain.is_empty() {
+        return Ok(());
+    }
+    let actual = code_outside_values(rendered, |_| true);
+    let harmless = code_outside_values(rendered, |_| false);
+    if actual == harmless {
+        return Ok(());
+    }
+    // Name the value that does it, or the first one when it takes two together (or when there are
+    // so many that trying each would be slow).
+    let culprit = if non_plain.len() <= 32 {
+        non_plain
+            .iter()
+            .copied()
+            .find(|&only| code_outside_values(rendered, |index| index == only) != harmless)
+            .unwrap_or(non_plain[0])
+    } else {
+        non_plain[0]
+    };
+    let name = name(culprit);
+    Err(format!(
+        "The value of the variable {{{{{name}}}}} changes how the rest of the query is read: a \
+         value that starts with # (a comment) or that ends in a backslash inside a \"\"\" string \
+         can hide the query text after it. Remove those characters from the value, or move the tag"
+    ))
 }
 
 /// Whether the query already is a GraphQL document: it starts with `{` (the shorthand for a
@@ -1020,5 +1093,193 @@ mod tests {
         // The same errors as the normal rendering.
         assert!(render_tracked("{{#a}}", &variables).is_err());
         assert!(render_tracked("{{.}}", &variables).is_err());
+    }
+
+    // The two gaps from the third review: a value that changes how the rest of the query is read.
+
+    #[test]
+    fn a_value_ending_in_a_backslash_cannot_run_a_block_string_on() {
+        let template = "{\n  allTask(where: {\n    name: {\n      matches: \"\"\"{{q}}\"\"\"\n    }\n    ownerId: { eq: 5 }\n    note: {\n      matches: \"\"\"{{r}}\"\"\"\n    }\n  }) { results { id } }\n}";
+        let error = build_query(template, &json!({ "q": "\\", "r": "#" })).unwrap_err();
+        assert!(
+            error.contains("{{q}}") && error.contains("changes how the rest"),
+            "{error}"
+        );
+        // Harmless values keep the owner filter in the code.
+        let built = build_query(template, &json!({ "q": "abc", "r": "def" })).unwrap();
+        assert!(built.contains("ownerId: { eq: 5 }"));
+        // A backslash in the middle of a block string is fine.
+        assert!(build_query(template, &json!({ "q": "a\\b c", "r": "d" })).is_ok());
+    }
+
+    #[test]
+    fn a_value_that_starts_a_comment_cannot_hide_the_text_after_it() {
+        let template =
+            "{ allTask(where: {\n  {{extra}} ownerId: { eq: 5 }\n}) { results { id } } }";
+        let error = build_query(template, &json!({ "extra": "# hi" })).unwrap_err();
+        assert!(
+            error.contains("{{extra}}") && error.contains("changes how the rest"),
+            "{error}"
+        );
+
+        let template =
+            "{ allTask(where: { ownerId: { eq: 5 } } {{x}} first: 10\n  ) { results { id } } }";
+        let error = build_query(template, &json!({ "x": "#" })).unwrap_err();
+        assert!(error.contains("{{x}}"), "{error}");
+        // The same value at the very end of a line with nothing after it hides nothing.
+        let built = build_query(
+            "{ allTask { results { id } } } {{x}}",
+            &json!({ "x": "# note" }),
+        )
+        .unwrap();
+        assert_eq!(built, "{ allTask { results { id } } } # note");
+    }
+
+    #[test]
+    fn a_value_in_a_comment_or_string_that_changes_nothing_is_fine() {
+        let ok = [
+            ("{ a(f: \"{{v}}\") { id } }", "x # y } {"),
+            ("{ a { id } } # {{v}}", "x # y } {"),
+            ("{ a(f: \"\"\"{{v}}\"\"\") { id } }", "x # y \" } {"),
+        ];
+        for (template, value) in ok {
+            assert!(
+                build_query(template, &json!({ "v": value })).is_ok(),
+                "{template}"
+            );
+        }
+    }
+
+    // A property test: for every query that is built, the code outside the escaped values is what
+    // it would be with harmless values, and no non-plain value is code.
+
+    struct Lcg(u64);
+
+    impl Lcg {
+        fn next(&mut self, below: usize) -> usize {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((self.0 >> 33) as usize) % below
+        }
+    }
+
+    #[test]
+    fn no_query_that_is_built_lets_a_value_change_the_code_around_it() {
+        const PIECES: [&str; 22] = [
+            "{{x}}", "{{y}}", "{{{z}}}", "{{! c }}", "\"", "\"\"\"", "\\", "#", "{", "}", "(", ")",
+            "\n", " ", "a", ":", "\\\"\"\"", "é", "{{ x }}", "{{x.0}}", "id", "[",
+        ];
+        const VALUES: [&str; 14] = [
+            "",
+            "a",
+            "1",
+            "a b",
+            "\\",
+            "\\\\",
+            "#",
+            "# c",
+            "x\\",
+            "1 } }",
+            "é#",
+            "\"",
+            "\n}",
+            "a\\\"\"\"",
+        ];
+        let mut random = Lcg(7);
+        let mut built_count = 0;
+
+        for _ in 0..30_000 {
+            let template: String = (0..1 + random.next(14))
+                .map(|_| PIECES[random.next(PIECES.len())])
+                .collect();
+            let variables = json!({
+                "x": VALUES[random.next(VALUES.len())],
+                "y": VALUES[random.next(VALUES.len())],
+                "z": "a",
+            });
+            // `{` + `{{x}}` + `}` makes `{{{x}}}`, a raw tag: raw values are not checked on purpose.
+            if ["{{{x", "{{{y", "{{{ x", "{{{ y"]
+                .iter()
+                .any(|raw| template.contains(raw))
+            {
+                continue;
+            }
+            let Ok(built) = build_query(&template, &variables) else {
+                continue;
+            };
+            built_count += 1;
+
+            let tracked = render_tracked(&template, &variables).unwrap();
+            let non_plain: Vec<usize> = (0..tracked.escaped.len())
+                .filter(|&i| !is_plain_value(&tracked.escaped[i].value))
+                .collect();
+
+            // The same template with every non-plain value replaced by "a" (plain ones stay).
+            let harmless_of = |name: &str| {
+                let value = variables[name].as_str().unwrap();
+                if is_plain_value(value) {
+                    value.to_string()
+                } else {
+                    "a".to_string()
+                }
+            };
+            let harmless_variables =
+                json!({ "x": harmless_of("x"), "y": harmless_of("y"), "z": "a" });
+            let harmless = render_tracked(&template, &harmless_variables).unwrap();
+
+            // The code outside the non-plain values, in both renderings.
+            let view = |rendered: &Rendered| -> Option<String> {
+                let code = graphql::code_chars(&rendered.text).ok()?;
+                Some(
+                    code.into_iter()
+                        .filter(|(at, _)| {
+                            !non_plain
+                                .iter()
+                                .any(|&i| rendered.escaped[i].span.contains(at))
+                        })
+                        .map(|(_, c)| c)
+                        .collect(),
+                )
+            };
+            assert!(view(&tracked).is_some(), "{template:?} {variables}");
+            assert_eq!(
+                view(&tracked),
+                view(&harmless),
+                "template {template:?}, variables {variables}: {built:?}"
+            );
+
+            // And no non-plain value is code.
+            let code = graphql::code_chars(&tracked.text).unwrap();
+            for &i in &non_plain {
+                assert!(
+                    !code
+                        .iter()
+                        .any(|(at, _)| tracked.escaped[i].span.contains(at)),
+                    "template {template:?}, variables {variables}: {built:?}"
+                );
+            }
+        }
+        // Make sure the loop checks something: a good share of the templates is built.
+        assert!(
+            built_count > 1_000,
+            "only {built_count} templates were built"
+        );
+    }
+
+    #[test]
+    fn thousands_of_tags_are_checked_quickly() {
+        // About 5,000 quoted tags with a non-plain value, then the same with one value that fails.
+        let template = "{ a(f: \"{{v}}\") { id } } ".repeat(2_500);
+        let started = std::time::Instant::now();
+        assert!(build_query(&template, &json!({ "v": "a b" })).is_ok());
+        let failing = "{{v}} \"\"\"{{v}}\"\"\" ".repeat(1_500);
+        assert!(build_query(&failing, &json!({ "v": "\\" })).is_err());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
     }
 }
