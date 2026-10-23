@@ -112,7 +112,9 @@ entirely through labels, info text, and error messages. Design for that:
 - [ ] **Actually published and tested live**: run `bb functions publish` against
       a real Betty Blocks app, drag the step onto an actual action canvas, and
       confirm it works with real input values — not just default/empty ones.
-      Say which app you tested against in the PR description. See
+      Say what kind of app you tested against in the PR description (for example "a
+      production-zone app" or "a demo app"), but never name a customer or their app: this repo
+      is public. See
       [`docs/testing-a-step-in-a-real-app.md`](docs/testing-a-step-in-a-real-app.md)
       for how to do this from a clone of this repo — `bb functions publish` can't
       run directly against `wasm-blocks-store` itself.
@@ -128,8 +130,8 @@ entirely through labels, info text, and error messages. Design for that:
 Include, at minimum:
 
 - What the step does and why it's useful (the problem it solves).
-- Which Betty Blocks app / canvas you tested it on, and what you tried (edge cases,
-  not just the happy path).
+- What kind of Betty Blocks app / canvas you tested it on (never a customer or app name:
+  this repo is public), and what you tried (edge cases, not just the happy path).
 - Anything you found non-obvious while building it — if it's a platform quirk worth
   other developers knowing, consider it belongs in the PR description even if it's
   not strictly about this step.

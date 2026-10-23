@@ -32,7 +32,7 @@ record it as a decision, not as a finding to re-raise.
    `CARGO_TARGET_DIR=<scratchpad>/target cargo test --offline` so tracked files stay untouched
    (check `git status` is clean afterwards).
 5. Read `CONTRIBUTING.md` and the `wasm-actions` skill: they hold the contribution bar
-   (tested on a canvas and which app, findings logged in the same PR, `function.json` limits).
+   (tested on a canvas and what kind of app, findings logged in the same PR, `function.json` limits).
 6. **Ask the user the threat model once, before reviewing, when the PR builds text, queries or
    commands from values:** who supplies those values (the step's developer, end users, another
    system)? The answer decides how severe injection findings are. Skip if the PR has no such
@@ -81,7 +81,7 @@ Repo-specific (custom briefs, general-purpose agent):
   "differs from the original"; others skip it.
 - **Conventions**: invoke `wasm-actions`; compare with sibling steps: `function.json` vs
   `wit/world.wit` names, vendored WIT, `Cargo.toml`, `wkg.*`, docs and logs updated in the same
-  PR, "which app was tested", test layout. Owns the README and docs checks.
+  PR, "what kind of app was tested" (described generically, no customer or app names), test layout. Owns the README and docs checks.
 - **Security**: injection into anything built as text, unvalidated interpolation, resource
   exhaustion, panics, error messages that echo input, dependencies (`cargo audit` or
   `cargo deny` if they work offline, otherwise read `Cargo.lock`) and WIT capabilities. Judge
@@ -93,7 +93,7 @@ you have not used them on this repo yet, try one on a PR as a baseline and note 
 what it covered better or worse than the set above.
 
 **Human-only checks:** a real canvas test cannot be automated. Do not claim it. Check that the PR
-states which app and which paths were tested and which were not, and list the untested paths as
+states what kind of app (no customer or app names) and which paths were tested and which were not, and list the untested paths as
 open items.
 
 ## 3. Verify, then report
