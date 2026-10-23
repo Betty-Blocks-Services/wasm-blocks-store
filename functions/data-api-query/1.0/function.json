@@ -24,7 +24,7 @@
       },
       "name": "variables",
       "label": "Variables",
-      "info": "Values for {{name}} in the query. Inside quotes (\"{{name}}\") any text is safe; outside quotes only numbers, true/false and names. {{{name}}} inserts text unchecked: use it only for query code you trust."
+      "info": "Values for {{name}} in the query. Inside quotes (\"{{name}}\") any text is safe; outside quotes only numbers, true/false and names, and no value may change how the rest of the query is read. {{{name}}} is unchecked: only for query code you trust."
     },
     {
       "meta": {
