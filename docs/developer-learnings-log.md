@@ -8,6 +8,30 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
+
+**Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:
+- `webBio: { eq: "line1\nline2" }`: accepted, no records (nothing has that text).
+- `firstName: { eq: "\u004Darcel" }` (`\u004D` is `M`): **no records**, although the record's `firstName` is `Marcel`. A decoded escape would have matched.
+- `firstName: { eq: "\qarcel" }` (`\q` is not a valid escape): **no error**, no records. A GraphQL lexer that follows the specification rejects an invalid escape.
+
+So the Data API does not decode backslash escapes in a string and does not validate them: a backslash is just a character. (Marcel: this is as he expected.)
+
+**What follows, not all of it tested:**
+- Escaping a line break as `\n` in a filter value would not produce a line break: a filter on a value that contains one would never match. A raw line break inside a string was not tried, because the `data-api-query` and `data-api-request` steps read strings like the specification (no line break in a string) and refuse such a query before it is sent.
+- Doubling backslashes in a `{{name}}` value (done by both steps, to stop a trailing backslash from escaping the closing quote under specification rules) makes the Data API look for two backslashes. That fits an earlier live result: a record whose text ended in a backslash did not come back from a filter on `{{name}}`. Not confirmed directly (the step refuses a literal query that ends a string in `\"`).
+- Text a builder writes as `\"` inside a string to mean a quote probably does not mean that for the Data API; not tried.
+- The `ActionsJS` step's HTML-escaping of `"` as `&quot;` is consistent with a Data API that has no way to write a quote inside a string.
+- Block strings (`"""`) were not tried.
+
+**How found:** to answer a review question on the line-break escape (is `\n` decoded?), since a single-line text field cannot hold a line break to test with.
+
+**Where this lands:** the `data-api-query` README, "Known limits"; a follow-up for `data-api-request` and `data-api-query` (backslash doubling, line-break escape, how strictly the steps read strings) once the open questions are answered.
+
+**Status:** the three results were seen firsthand on 2026-10-24; the consequences are inferences.
+
+---
+
 ## The Data API does not run a document with two operations (opaque "Internal Server Error") and refuses direct mutations (2026-10-23)
 
 **Fact:**
