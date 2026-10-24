@@ -1,0 +1,83 @@
+package betty-blocks-types:types@3.0.0;
+
+interface types {
+    type json-string = string;
+
+    type betty-record-json = string;
+
+    record betty-model {
+        name: string
+    }
+
+    record betty-record {
+        id: u64
+    }
+
+    record betty-collection {
+        model: betty-model,
+        data: option<list<betty-record-json>>
+    }
+
+    record betty-authentication-profile {
+        id: option<string>
+    }
+
+    record betty-selected-record {
+        model: betty-model,
+        data: option<betty-record>
+    }
+
+    record betty-property {
+        name: string,
+    }
+
+    record betty-property-path {
+        name: string,
+        kind: string,
+        object-fields: option<list<betty-property>>
+    }
+
+    record betty-property-map {
+        key: list<betty-property-path>,
+        value: option<json-string>
+    }
+
+    type betty-property-mapping = list<betty-property-map>;
+
+    record key-value {
+        key: string,
+        value: option<json-string>
+    }
+
+    type betty-map = list<key-value>;
+
+    record http-search-options {
+        description: option<string>
+    }
+
+    record authentication-config {
+        kind: string,
+        value: option<string>
+    }
+
+    record mcp-options {
+        description: option<string>,
+        url: string,
+        authentication: authentication-config,
+    }
+
+    variant betty-ai-tool {
+        http-search(http-search-options),
+        mcp(mcp-options)
+    }
+
+    record betty-ai-agent {
+        name: string,
+        ai-model-name: string,
+        url: string,
+        api-key: string,
+        tools: option<list<betty-ai-tool>>
+    }
+
+    type betty-value = json-string;
+}

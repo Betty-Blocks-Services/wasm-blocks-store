@@ -105,11 +105,15 @@ Create/Update a Webuser, `Authenticate User` completing the login):
 
 Both are grouped as one block in [`blocks/openid-connect-sso.json`](blocks/openid-connect-sso.json).
 
-One more step, ported from the ActionsJS Data API Request step and tested on canvases of a personal
-test app and of a customer's development app (the customer app is not named here):
+Two Data API steps. The first is ported from the ActionsJS Data API Request step and was tested on
+canvases of a personal test app and of a customer's development app (the customer app is not named
+here):
 
 - `functions/data-api-request/1.0/` — builds a Data API query (model, filter with `{{variables}}`,
   paging, sorting, the properties to retrieve) and returns the record, the records or the total
   count. See its README for the options and the differences from the ActionsJS step.
+- `functions/data-api-query/1.0/` — runs a Data API query you write yourself, with no model selected,
+  so one step can read several models at once (`{{variables}}` as in the first step; the response
+  `data` is the Result). See its README for what a value may be inside and outside quotes.
 
 See `docs/developer-learnings-log.md` for the full history.

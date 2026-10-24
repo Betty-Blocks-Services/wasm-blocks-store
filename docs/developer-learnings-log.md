@@ -8,6 +8,77 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
+
+**Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:
+- `webBio: { eq: "line1\nline2" }`: accepted, no records (nothing has that text).
+- `firstName: { eq: "\u004Darcel" }` (`\u004D` is `M`): **no records**, although the record's `firstName` is `Marcel`. A decoded escape would have matched.
+- `firstName: { eq: "\qarcel" }` (`\q` is not a valid escape): **no error**, no records. A GraphQL lexer that follows the specification rejects an invalid escape.
+
+So the Data API does not decode backslash escapes in a string and does not validate them: a backslash is just a character. (Marcel: this is as he expected.)
+
+**What follows, not all of it tested:**
+- Escaping a line break as `\n` in a filter value would not produce a line break: a filter on a value that contains one would never match. A raw line break inside a string was not tried, because the `data-api-query` and `data-api-request` steps read strings like the specification (no line break in a string) and refuse such a query before it is sent.
+- Doubling backslashes in a `{{name}}` value (done by both steps, to stop a trailing backslash from escaping the closing quote under specification rules) makes the Data API look for two backslashes. That fits an earlier live result: a record whose text ended in a backslash did not come back from a filter on `{{name}}`. Not confirmed directly (the step refuses a literal query that ends a string in `\"`).
+- Text a builder writes as `\"` inside a string to mean a quote probably does not mean that for the Data API; not tried.
+- The `ActionsJS` step's HTML-escaping of `"` as `&quot;` is consistent with a Data API that has no way to write a quote inside a string.
+- Block strings (`"""`) were not tried.
+
+**How found:** to answer a review question on the line-break escape (is `\n` decoded?), since a single-line text field cannot hold a line break to test with.
+
+**Where this lands:** the `data-api-query` README, "Known limits"; a follow-up for `data-api-request` and `data-api-query` (backslash doubling, line-break escape, how strictly the steps read strings) once the open questions are answered.
+
+**Status:** the three results were seen firsthand on 2026-10-24; the consequences are inferences.
+
+---
+
+## The Data API does not run a document with two operations (opaque "Internal Server Error") and refuses direct mutations (2026-10-23)
+
+**Fact:**
+- A document with two named operations sent through the Data API Query step, `query A { onePerson(where: { id: { eq: <id> } }) { id } }` followed by `query B { allCountry { totalCount } }`, failed with `gRPC call failed: status: Unknown, message: "Internal Server Error", details: []`. No data came back and the message does not say what was wrong, so a builder cannot tell a second operation from a server fault.
+- A direct mutation, `mutation { updatePerson(id: <id>, input: { webBio: "x" }) { id webBio } }`, was refused by the Data API. Per Marcel, the Data API does not accept direct mutations at all: mutations only go through actions, as `mutation { action(id: "<action id>", input: $input) }`. The exact refusal text was not recorded.
+
+**How found:** run on the canvas through the `data-api-query` step on a production-zone app, to answer a review question: can text injected into a query run a second operation or a mutation? On this evidence it cannot: the two-operation document failed and the mutation was refused. The step sends no GraphQL variables (`request(..., "{}")`), so an `$input` variable for the action mutation would not be filled in.
+
+**Not tested:** running an action through `mutation { action(id: "...", input: ...) }` from the step, and whether a document with one operation and unused extra fragments or a named operation among several is accepted.
+
+**Where this lands:** the `data-api-query` README, "Behaviour".
+
+**Status:** both outcomes seen firsthand on the canvas on 2026-10-23.
+
+---
+
+## A `null` relation in a Data API response made a step's Object result fail with "Item '...' is not an Object'" (2026-10-23)
+
+**Fact:** a hand-written query on one record, `{ oneContact(where: { id: { eq: <id> } }) { id country { id name } state { abbreviation } parent { id } children { id } } }`, failed on the canvas with `Item 'parent' is not an Object'.` (property name changed here) when the `parent` relation was `null`. The same query without `parent { id }` worked and returned the other relations (an empty to-many relation, `children`, came back as `[]` without trouble).
+
+**How found:** two canvas runs of the `data-api-query` step on a production-zone app; the step returns the Data API's `data` as a JSON string typed with a named alias.
+
+**Not known:** which layer raises the message (it is not one of the step's own errors; the platform's Result binding is the likely one, unverified) or whether a Schema Model on the Result changes it. A missing record (`oneContact: null`) was not tried and is probably the same case.
+
+**Where this lands:** a platform question for the product team once isolated; until then the `data-api-query` README lists it under "Known limits".
+
+**Status:** the failing and the working query were both run on the canvas; the layer that raises the error is not confirmed.
+
+---
+
+## Data API limits that matter when you write queries by hand: 10 top-level fields per request, 4 nested layers, no aggregates, nested lists take only where/sort (2026-10-23)
+
+**Fact, from first-hand use of a production app (Marcel) and the app's introspection response:**
+- **A request with more root fields than the Data API allows fails as a whole** (error, no data). Evidence: a query with 13 root fields (several aliases of one `all<Model>` field) was rejected; a 7-field one with deep nesting ran. The limit is taken to be 10 top-level fields, aliases included: that number comes from the docs as Marcel reads them, and the boundary (10 runs, 11 fails) was not tested. That app splits its analytics queries over 2 Data API query steps (2 requests). The documented rate limit (e.g. 200 requests/minute on live production apps, per Marcel's reading of the docs) is separate, and each step run costs one request.
+- **Nested relations: max 4 layers** (Marcel's reading of the docs, not tested by us; the deepest used so far is 3). Nested relations are taken not to count towards the 10 (not tested, no evidence beyond the 7-field query with deep nesting that ran).
+- **No aggregates in the schema:** every `<Model>List` type has only `results` and `totalCount` (confirmed in the default introspection response). That app works around it with a precomputed metrics model. Not tried: querying for a sum/avg field, since none is declared.
+- **Nested to-many fields accept only `where` and `sort`, no `take`/`skip`** (schema). Whether such a nested list is capped is **not verified**, so counting `<relation> { id }` per parent may undercount for large relations; exact counts need a filtered root `totalCount`.
+- **BB introspection quirks:** scalar fields are reported with `kind: OBJECT` (name `String`, `Int`, ...), some empty enums come back as `enumValues: [""]` (a string, not an object), and the default query's output is mostly input types (filter/sort/relation/operator) that can be derived from the models.
+
+**How found:** Marcel's own queries on a production app, and the app's default introspection response.
+
+**Where this lands:** the `data-api-query` step README notes the 10-field limit; `data-api-request` is not affected (it sends one field per request).
+
+**Status:** the limit of 10 is from the docs as Marcel reads them, and the 13-field query failing and the 7-field query running are from his own tests, with the boundary (10 runs, 11 fails) not tested; the schema facts were read from an introspection response on 2026-10-23; the 4-layer limit and the nested-list cap are not verified by us.
+
+---
+
 ## Expression step: how it evaluates, how the Variables map works, what fails and why, and proven patterns (2026-10-09)
 
 **Where each part comes from, so you know how far to trust it:**
