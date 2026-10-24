@@ -196,7 +196,9 @@ fn code_outside_values(rendered: &Rendered, hostile: impl Fn(usize) -> bool) -> 
 ///
 /// `{{name}}` escapes `&`, `"`, `<`, `>` and backslashes, which keeps a value inside a string it
 /// sits in, but a value that is not plain (see `is_plain_value`) can still do harm in two ways, and
-/// both are checked on the finished query, read the way the Data API reads it (a template can read
+/// both are checked on the finished query, read the way the GraphQL specification reads it (the
+/// Data API reads strings more simply, see the learnings log of 2026-10-24; what that means for
+/// a backslash before a quote written ahead of a tag is not tested). (A template can read
 /// differently: a quote in a `{{! comment}}`, or a backslash in front of a tag, moves the string
 /// boundaries):
 /// 1. it is query code itself: outside a string, `1 }, _or: [...]` adds a filter and

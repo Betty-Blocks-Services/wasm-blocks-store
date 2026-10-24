@@ -13,7 +13,8 @@ next to a plain one (works), and a document with two operations and a direct mut
 failed on the Data API side, see "Behaviour"). Unit-tested only: sections, a missing record, a value with
 a quote, `{{{...}}}` with a quote in the middle, templates that read differently from the rendered query
 (a quote in a `{{! comment}}`, a backslash in front of a tag), a value that starts a `#` comment or
-ends in a backslash inside a block string (also fuzzed: millions of generated templates), and the error texts added after the
+ends in a backslash inside a block string (30,000 generated templates in `cargo test`; the same test was also run outside the repo with
+other seeds, a few million cases in all), and the error texts added after the
 review. See "Known limits" below for two things that did not behave as hoped.
 
 ## Options
@@ -55,7 +56,8 @@ query text, so what a value may be depends on where its tag sits:**
 - **A name is still a name.** A tag in the place of a field, an argument or an operation keyword
   (`{ {{f}} }`) lets its value pick any field, model or operation that the Data API knows. An empty or
   missing value outside quotes is accepted and leaves a query the Data API rejects (`eq: }`). Whether a
-  value is inside quotes is judged on the finished query, read the way the Data API reads it.
+  value is inside quotes is judged on the finished query, read the way the GraphQL specification
+  reads it (the Data API reads strings more simply; see the learnings log of 2026-10-24).
 
 More about the templating (the same as `data-api-request`, a Rust port of the `templayed.js` subset the
 ActionsJS Data API Request step used):
