@@ -124,10 +124,14 @@ variables. Use `{{name}}` instead.
   bound as an Object. Not isolated further (whether a Schema Model changes it was not checked). A missing
   record (`oneContact: null`) probably fails the same way; that was not tried. Leave out relations that can
   be empty, or query them from the other side.
-- **A backslash in a value was not confirmed to match.** `{{name}}` doubles every backslash so a value
-  cannot escape its string. A record whose text ended in a backslash did not come back from a
-  filter on `{{name}}` in the one live try, and why was not investigated. The raw tag
-  `{{{name}}}` with such a value is rejected by the step, as intended. The same escaping is in
+- **A value with a backslash probably does not match.** `{{name}}` doubles every backslash so that,
+  read the way the GraphQL specification reads a string, a value cannot escape its closing quote. The
+  Data API does not seem to read strings that way: in live tests `"\u004Darcel"` did not find
+  `Marcel` and `"\qarcel"` was not rejected, so it takes backslashes literally and the doubled
+  backslashes are looked for as two. That fits the one live try where a record whose text ended in a
+  backslash did not come back from a filter on `{{name}}` (not confirmed directly: the step reads
+  strings like the specification and refuses a query to test it with). The raw tag `{{{name}}}` with
+  such a value is rejected by the step when it ends in a backslash. The same doubling is in
   `data-api-request`.
 
 ## Tests
