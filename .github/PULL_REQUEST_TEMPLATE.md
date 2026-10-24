@@ -4,8 +4,9 @@
 
 ## Testing
 
-<!-- Which Betty Blocks app / canvas did you actually test this on (not just `cargo test`)?
-     What did you try beyond the happy path? -->
+<!-- What kind of Betty Blocks app / canvas did you actually test this on (not just `cargo test`)?
+     Describe it generically ("a production-zone app", "a demo app"): no customer or app names,
+     this repo is public. What did you try beyond the happy path? -->
 
 ## Checklist
 

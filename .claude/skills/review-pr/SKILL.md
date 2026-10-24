@@ -84,7 +84,8 @@ and format/lint being covered by CI and the baseline):
 - **Step:** not a port of an existing native or Block Store step and not already a generic
   reusable component (`block-store-wasm-components`, `native-wasm-components`, `wasco-dev`
   checked, and the PR says so); `function.json` complete; published with `bb functions publish`
-  and dragged onto a real canvas, with the app and the tested and untested paths named;
+  and dragged onto a real canvas, with the kind of app (no customer or app name) and the tested and
+  untested paths named;
   versioned correctly.
 - **Knowledge-only:** tested firsthand, or explicitly flagged as unverified or secondhand (the
   log has many entries later retracted: challenge any causal claim that says more than was
@@ -138,7 +139,8 @@ scoring).
   file:line and a failing input -> wrong output."
 
 **Live-test evidence:** the canvas test is the author's checklist item, and you cannot run it,
-so do not claim it. Check that the PR names the app and the paths that were tested and the ones
+so do not claim it. Check that the PR says what kind of app it was tested on (and names no
+customer or app) and the paths that were tested and the ones
 that were not, and list the untested paths as open items (the user decides whether they block
 the merge).
 
