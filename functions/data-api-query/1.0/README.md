@@ -37,9 +37,8 @@ query text, so what a value may be depends on where its tag sits:**
 - **Inside quotes** (`name: { eq: "{{name}}" }`): any text is safe. `{{name}}` escapes `&`, `"`, `<`
   and `>` and doubles every backslash, so a value cannot close or escape the string it sits in.
   (`&` becomes `&amp;`, so a filter on a value containing `&` will not match it: use `{{{name}}}` for
-  that, with a value you trust.) A line break in a value is written as `\n` (or `\r`), so a value from
-  a multi-line text field stays in its string; inside a block string (`"""..."""`) it shows as those
-  two characters.
+  that, with a value you trust.) A value with a line break cannot go inside quotes: the step fails
+  with a message that says so.
 - **Outside quotes** (`id: { eq: {{id}} }`): the value is query code, so the step only accepts a
   number, `true` or `false`, a name (letters, digits, `_`, `-` and `.`), or a comma-separated list of
   those (a list value prints as `1,2,3`, so `in: [{{ids}}]` works). Anything else fails the step with an

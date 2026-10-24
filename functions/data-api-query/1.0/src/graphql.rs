@@ -4,10 +4,11 @@
 //! characters are code (not inside a string or a comment), whether the brackets pair up, and which
 //! fields a selection picks at its top level.
 //!
-//! The lexer follows the GraphQL specification, because the Data API reads the query the same way
-//! and the error messages should agree with what it would report. The bracket check only makes the
-//! errors readable; it is not a security boundary (what a value may be is decided where it is
-//! inserted):
+//! The lexer follows the GraphQL specification, so the bracket check and the error messages agree
+//! with a spec-conforming reader. The Data API reads a string more simply: backslashes are taken
+//! literally, with no escapes (see docs/developer-learnings-log.md, 2026-10-24), so the two can
+//! disagree. The check only makes errors readable; it is not a security boundary (what a value may
+//! be is decided where it is inserted):
 //! - a `#` comment ends at `\n`, `\r` or `\r\n`;
 //! - a string ends at its closing `"`, may not contain a line break, and `\"` does not close it;
 //! - a block string runs from `"""` to the next `"""` (`\"""` is an escaped triple quote);

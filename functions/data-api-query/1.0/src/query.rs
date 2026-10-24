@@ -25,13 +25,23 @@ pub fn parse_variables(text: &str) -> Result<Value, String> {
     }
 }
 
+/// Whether any text in `value` contains a line break.
+fn has_line_break(value: &Value) -> bool {
+    match value {
+        Value::String(text) => text.contains(['\n', '\r']),
+        Value::Array(items) => items.iter().any(has_line_break),
+        Value::Object(map) => map.values().any(has_line_break),
+        _ => false,
+    }
+}
+
 /// Fails with a readable message that points at the line when the query has a string that is not
 /// closed or brackets that do not pair up, instead of sending it and getting the Data API's
 /// "syntax error before: '}'".
 ///
 /// The offending line is not quoted: the query can contain values filled in from variables that
 /// should not end up in an error message.
-fn check_balanced(query: &str, was_templated: bool) -> Result<(), String> {
+fn check_balanced(query: &str, was_templated: bool, variables: &Value) -> Result<(), String> {
     let note = if was_templated {
         " (counted after the variables were filled in)"
     } else {
@@ -39,10 +49,23 @@ fn check_balanced(query: &str, was_templated: bool) -> Result<(), String> {
     };
     match graphql::find_problem(query) {
         None => Ok(()),
-        Some(problem) => Err(format!(
-            "The query {}{note}.",
-            problem.describe(query, false)
-        )),
+        Some(problem) => {
+            // A line break in a value that sits inside quotes ends the string early.
+            let hint = if matches!(problem, graphql::Problem::Unterminated { .. })
+                && was_templated
+                && has_line_break(variables)
+            {
+                " A value in Variables contains a line break, which cannot be inserted inside \
+                 quotes with {{name}}: remove the line break first, for example in an \
+                 Expression step."
+            } else {
+                ""
+            };
+            Err(format!(
+                "The query {}{note}.{hint}",
+                problem.describe(query, false)
+            ))
+        }
     }
 }
 
@@ -289,7 +312,7 @@ pub fn build_query(query: &str, variables: &Value) -> Result<String, String> {
             "The query is empty after inserting the variables: check the values in Variables",
         ));
     }
-    check_balanced(rendered, query.contains("{{"))?;
+    check_balanced(rendered, query.contains("{{"), variables)?;
 
     Ok(if is_document(rendered) {
         rendered.to_string()
@@ -792,15 +815,10 @@ mod tests {
     }
 
     #[test]
-    fn a_value_in_a_comment_cannot_end_it_with_a_line_break() {
-        // A line break in a value is written as `\n`, so the comment cannot end where the value
-        // wants it to, and the value stays in the comment.
+    fn a_tag_in_a_comment_is_checked_because_a_line_break_ends_the_comment() {
         let template = "{ a { id } } # {{v}}";
-        for value in ["x\n} } { y", "x\r} } { y", "x\r\n} } { y"] {
-            let built = build_query(template, &json!({ "v": value })).unwrap();
-            assert!(graphql::find_problem(&built).is_none(), "{built}");
-            assert_eq!(built.lines().count(), 1, "{built}");
-        }
+        let error = build_query(template, &json!({ "v": "x\n} } { y" })).unwrap_err();
+        assert!(error.contains("outside quotes"), "{error}");
     }
 
     #[test]
@@ -842,25 +860,25 @@ mod tests {
         assert!(error.contains("{{{name}}}"), "{error}");
     }
 
-    // A line break in a value that sits inside quotes.
+    // T3: a line break in a quoted value.
 
     #[test]
-    fn a_line_break_in_a_quoted_value_stays_inside_its_string() {
-        let built = build_query(
+    fn a_line_break_in_a_quoted_value_points_at_the_variables() {
+        let error = build_query(
             "{ a(f: \"{{v}}\") { id } }",
-            &json!({ "v": "line1\nline2\r\nline3" }),
+            &json!({ "v": "line1\nline2" }),
         )
-        .unwrap();
-        assert_eq!(built, "{ a(f: \"line1\\nline2\\r\\nline3\") { id } }");
-        assert!(graphql::find_problem(&built).is_none());
-        // A tab is fine too.
+        .unwrap_err();
+        assert!(error.contains("never closed"), "{error}");
+        assert!(
+            error.contains("line break") && error.contains("Variables"),
+            "{error}"
+        );
+        // Without a line break in the Variables the hint is not given.
+        let error = build_query("{ a(f: \"{{v}} ) { id } }", &json!({ "v": "a" })).unwrap_err();
+        assert!(!error.contains("line break"), "{error}");
+        // A tab is fine.
         assert!(build_query("{ a(f: \"{{v}}\") { id } }", &json!({ "v": "a\tb" })).is_ok());
-    }
-
-    #[test]
-    fn a_line_break_outside_quotes_is_still_refused() {
-        let error = build_query("{ a(f: {{v}}) { id } }", &json!({ "v": "1\n} }" })).unwrap_err();
-        assert!(error.contains("outside quotes"), "{error}");
     }
 
     // T4: errors and variables.
