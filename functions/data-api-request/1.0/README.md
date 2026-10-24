@@ -105,6 +105,9 @@ The step covers the same use cases. Where it differs on purpose:
 
 ## Tests
 
+`src/template.rs` and `src/graphql.rs` are also copied into the
+[`data-api-query`](../../data-api-query/1.0/README.md) step: when you change one, change the other.
+
 `just test` runs the unit tests. Two of them compare against the original ActionsJS code:
 `tests/generate_templayed_cases.mjs` and `tests/generate_query_cases.mjs` record what the original
 `templayed.js` and step 1.7 produce (the queries, the field names and what the step returns for a

@@ -1,3 +1,5 @@
+//! A copy of this file is in `data-api-query/1.0/src/template.rs`: change both.
+//!
 //! Fills `{{name}}` placeholders in the filter with values from the Variables option. This is a
 //! small, flat part of what `templayed.js` (the template library the ActionsJS step used) did:
 //! - `{{path.to.value}}`: the value, HTML-escaped (`&`, `"`, `<`, `>`) with backslashes doubled

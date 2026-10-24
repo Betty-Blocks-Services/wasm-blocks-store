@@ -1,9 +1,16 @@
+//! A copy of this file is in `data-api-query/1.0/src/graphql.rs`: change both.
+//!
 //! Just enough GraphQL lexing to check the text a developer typed or a variable filled in: which
 //! characters are code (not inside a string or a comment), whether the brackets pair up, and which
 //! fields a selection picks at its top level.
 //!
-//! The lexer follows the GraphQL specification, because the Data API reads the query the same way
-//! and anything this step sees differently could be used to smuggle text past the bracket check:
+//! The lexer follows the GraphQL specification, so the bracket check and the error messages agree
+//! with a spec-conforming reader. The Data API reads a string more simply: backslashes are taken
+//! literally, with no escapes (see docs/developer-learnings-log.md, 2026-10-24), so the two can
+//! disagree. The bracket check only makes errors readable. `data-api-query` also uses this lexer to
+//! decide where a value sits in the query (`check_unquoted_tags`), so a change here has to keep that
+//! check right; how the Data API reads a quote after a backslash, in a string or a block string, is
+//! an open question (see the log entry). The rules the lexer follows:
 //! - a `#` comment ends at `\n`, `\r` or `\r\n`;
 //! - a string ends at its closing `"`, may not contain a line break, and `\"` does not close it;
 //! - a block string runs from `"""` to the next `"""` (`\"""` is an escaped triple quote);
