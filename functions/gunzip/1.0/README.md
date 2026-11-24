@@ -3,8 +3,8 @@
 Decompresses gzip data, the inverse of [GZIP](../../gzip/1.0/README.md). Use it to read a gzipped
 response from an API, or to check what a GZIP step produced.
 
-**Status:** built and tested locally only (unit tests and tests through a real component instance,
-including data compressed by the system's `gzip`). Not yet tested on a canvas.
+**Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested locally (unit tests and tests through a real component instance,
+including data compressed by the system's `gzip`).
 
 ## Options
 

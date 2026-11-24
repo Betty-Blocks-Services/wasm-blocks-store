@@ -30,9 +30,9 @@ Also confirmed: the icon picker in the IDE's "Add custom Wasm step" upload flow 
 
 **How found:** building the `gzip`/`gunzip` steps on 2026-11-24 on a machine whose default toolchain was 1.93. Installed 1.94 next to it (`rustup toolchain install 1.94 --target wasm32-wasip2 -c clippy -c rustfmt`) and ran the checks with `RUSTUP_TOOLCHAIN=1.94`, without changing the default toolchain.
 
-**Why it matters:** CI uses the latest stable Rust, so the next PR CI run will probably hit the same clippy error, whatever that PR changes. Fixing `query.rs:188` unblocks it. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
+**Why it matters:** CI uses the latest stable Rust, so a PR CI run hits the same clippy error, whatever the PR changes. Fixed in the gzip/gunzip PR: `!spans.get(next).is_some_and(|span| span.start <= *at)` became `spans.get(next).is_none_or(|span| span.start > *at)`, which means the same. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
 
-**Status:** confirmed locally on 2026-11-24. Whether CI fails was not checked (no CI run since 2026-10-24): open.
+**Status:** confirmed locally on 2026-11-24; the clippy error is fixed: resolved.
 
 ---
 

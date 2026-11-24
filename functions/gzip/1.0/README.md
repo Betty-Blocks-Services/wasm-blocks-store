@@ -7,8 +7,8 @@ counterpart is [GUNZIP](../../gunzip/1.0/README.md).
 The steps only exchange text values, so the binary gzip data never leaves the step: you choose
 how the input is read (plain text or base64) and how the result is written (base64 or text).
 
-**Status:** built and tested locally only (unit tests and tests through a real component instance,
-including decompressing the output with the system's `gzip -d`). Not yet tested on a canvas.
+**Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested locally (unit tests and tests through a real component instance,
+including decompressing the output with the system's `gzip -d`).
 
 ## Options
 

@@ -116,4 +116,11 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+Two generic compression steps, tested on a canvas of a test app. Binary data never leaves the
+step: input and output are UTF-8 text or base64.
+
+- `functions/gzip/1.0/` (GZIP) — gzip-compresses data, e.g. for an API that wants a file "gzipped
+  and base64-encoded". Deterministic output.
+- `functions/gunzip/1.0/` (GUNZIP) — decompresses gzip data.
+
 See `docs/developer-learnings-log.md` for the full history.
