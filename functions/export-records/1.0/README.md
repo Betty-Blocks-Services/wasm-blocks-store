@@ -4,9 +4,8 @@ Exports the records of a model to a CSV or Excel (XLSX) file, stores the file th
 `betty-blocks-types:upload-file@4.0.0` interface and returns the file reference. A Rust port of the
 ActionsJS step `export-to-csv` 3.4 (Betty-Blocks-Services/rob-block-store-functions).
 
-**Status:** built for `wasm32-wasip2` and unit-tested (`cargo test -p export-records`). **Not yet run
-on a canvas.** Until it is, this step does not meet the bar in [CONTRIBUTING.md](../../../CONTRIBUTING.md).
-Open questions for the first canvas test are listed under "Not tested yet".
+**Status:** built for `wasm32-wasip2`, unit-tested (`cargo test -p export-records`) and run
+successfully on a canvas (2026-11-24). The points under "Not tested yet" are still open.
 
 > **After configuring:** add a Create Record or Update Record step on the model chosen as
 > "Model to save file into" and put the result (`As`) in the file property chosen as "Property to
@@ -67,11 +66,10 @@ Open questions for the first canvas test are listed under "Not tested yet".
 
 ## Not tested yet
 
-To check on the first canvas run:
+Run on a canvas, but not checked separately:
 
-- whether the platform turns a Select value into the matching WIT enum case (`file-type`, `sort-order`, `delimiter`) for a custom component
-  (the native HTTP step does it for its `method` and `protocol` enums, inside a record), and whether My BB's
-  function.json editor accepts a Select on it after an IDE upload (it refused one on a WIT `string`);
+- every case of the Select options: the platform turned the chosen Select values into WIT enum cases
+  in the canvas run, but not every value of `file-type`, `sort-order` and `delimiter` has been tried;
 - how the platform passes an empty optional **Sort property** (expected `null` or an empty list; both are
   handled);
 - whether a **Map** reaches the step as a JSON object string (as the Expression step's does) with the keys
