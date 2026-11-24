@@ -3,10 +3,13 @@ name: review-pr
 description: >
   How to handle a pull request in this repo end to end: triage it, review it (yourself, or with
   scoped read-only reviewers for a step with real logic), post agent-readable findings, re-review
-  the fixes, merge on request and clean up. Use whenever the user says things like "handle the
-  PR", "review the PR", "check the open PRs", "check the new updates on the PR", "merge the PR"
-  or "clean up after the PR". This is the repo's own process; it is not the plugin command
-  `pr-review-toolkit:review-pr`, which only reviews a local diff.
+  the fixes, merge on request and clean up. Use whenever the user asks to review, check or
+  handle any pull request of this repo, with or without a number or URL: "handle the PR",
+  "review the PR", "review the PRs at <url>", "check the open PRs", "check the new updates on the
+  PR", "/code-review <PR>", "merge the PR" or "clean up after the PR". This is the repo's own
+  process and the only way PRs are reviewed here; it is not the plugin command
+  `pr-review-toolkit:review-pr`, and the `code-review` skill is one step of it (section 3), not a
+  substitute.
 ---
 
 # Handling a PR
@@ -26,6 +29,21 @@ decision, not as a finding to re-raise.
 **Spend tokens where they find bugs.** Commands for deterministic work, yourself for docs and
 process PRs, reviewers only for a step with real logic, a cheaper model wherever it is enough.
 Report the cost at the end (section 8).
+
+## 0. Before anything else (every run, no exceptions)
+1. **Be in a clone of this repo.** `git remote get-url origin` must name
+   `Betty-Blocks-Services/wasm-blocks-store`. If the session is in a scratch folder or another
+   project, stop and ask the user to open the session in the clone. Do not review from `gh` output
+   alone, and do not carry on without this skill, `CONTRIBUTING.md` and the template.
+2. **Read in full, with the Read tool, the whole file each time:** `CONTRIBUTING.md` and
+   `.github/PULL_REQUEST_TEMPLATE.md`. Not the first screenful, not a `head`, not a summary from
+   an earlier run or from this skill. If a Read stops at its line limit, read the rest. Say in
+   your first message that you have read both.
+3. **Read the other process files that apply:** `CLAUDE.md`, and for a step PR the `wasm-actions`
+   skill. For the platform facts a PR relies on, search `docs/developer-learnings-log.md` for the
+   topic instead of trusting memory.
+4. **Review the head SHA, on the right base.** Everything below is judged on the PR's head
+   commit against its base branch, never on `main` as it is now.
 
 ## 1. Triage
 1. `gh pr list --state open --json number,title,headRefName,author,isDraft,updatedAt,url,files`.
@@ -74,6 +92,16 @@ Report the cost at the end (section 8).
    confirmation. Check `git status` is clean afterwards.
 
 ## 3. Review
+**Required pass for every PR that changes code** (Rust, scripts, workflows, `Justfile`): run the
+`code-review` skill yourself, in this session and not in a subagent, once the head is checked out
+(section 2): Skill tool, `skill: code-review`, `args: "high <PR number>"`. It reads the PR with
+`gh pr diff` and finds correctness bugs; keep its level at `high` (use `max` or `ultra` only if the
+user asks for it by name, they are the costliest). Its findings are the code-correctness input to
+section 4: treat each as **suspected** unless it shows a reproduced probe. This pass replaces the
+`pr-review-toolkit:code-reviewer` reviewer below, so do not launch both. It does not replace
+this section's lane checklists or the other reviewers, and it does not check `CONTRIBUTING.md`
+rules: that part stays yours. A docs-only or log-only PR has no code, so skip it there.
+
 **Docs or process lane only: review it yourself, whatever the size**, with the lane checklist and
 a check of the factual claims against their sources (a 400-line log update is mostly claims to
 verify, not code to analyse). No reviewers unless the user asks. For a removal, grep the head for
@@ -104,7 +132,6 @@ non-overlapping scope and the baseline results. Use the fully qualified agent na
 
 | Agent | Launch when the diff... |
 |---|---|
-| `pr-review-toolkit:code-reviewer` | has Rust or other code: logic, edge cases, limits and paging, error propagation, panics, overflow |
 | `pr-review-toolkit:silent-failure-hunter` | adds or changes error handling, fallbacks, `Result` mapping |
 | `pr-review-toolkit:pr-test-analyzer` | adds or changes tests or fixtures: gaps, assertions that do not assert, case counts |
 | `pr-review-toolkit:comment-analyzer` | adds code comments or step READMEs: stale or wrong statements, disproven rules stated as fact |
@@ -121,10 +148,9 @@ version confirmed live for outbound HTTP (others untested); a step failing on a 
 be in the wrong sandbox. Do **not** flag a missing secret mask on secret-like inputs (the platform
 Configuration feature handles that), or the world name `main` either way (that rule is doubtful).
 
-**Models.** The toolkit `code-reviewer` defaults to opus: pass `model: sonnet` for the toolkit
-agents. For Security and Fidelity omit `model` so they inherit the session's, because reasoning
-and proofs of concept matter there. Use `haiku` only for reading-only work (a large-diff scan,
-scoring).
+**Models.** The toolkit agents default to opus: pass `model: sonnet` for them. For Security and
+Fidelity omit `model` so they inherit the session's, because reasoning and proofs of concept
+matter there. Use `haiku` only for reading-only work (a large-diff scan, scoring).
 
 **Every brief says:**
 - Branch, full SHA and the diff to review: `git diff origin/<base>...HEAD` (the toolkit agents
@@ -145,7 +171,11 @@ that were not, and list the untested paths as open items (the user decides wheth
 the merge).
 
 ## 4. Verify and score, then report
-1. Merge duplicates across reviewers into one finding.
+1. Merge duplicates across the `code-review` pass and the reviewers into one finding. Check each
+   finding against the platform facts in section 3 and the learnings log (a finding that
+   contradicts a known fact is weaker than it looks) and against the PR's own README.
+   The `code-review` skill ends with its own findings report in the app: that is not the PR
+   review. It is input to this section, and nothing is posted to GitHub until section 5.
 2. **Confirmed** findings stay. For each **suspected** finding, launch one cheap verifier in
    parallel (`model: haiku`, or `sonnet` for a subtle one) with the finding, the code and this
    scale: 0 false positive or pre-existing; 25 might be real, unverified; 50 verified but minor or
@@ -162,7 +192,10 @@ the merge).
 Follow the spec-style reviews on PR 8 (`gh pr view 8 --json reviews`; the third and
 fourth are the model, the first two are plain checklists), because other agents already read that
 format:
-- Post as a GitHub review: `gh pr review <n> --comment --body-file <file>`.
+- Post as a GitHub review: `gh pr review <n> --comment --body-file <file>`. Never use
+  `gh pr comment` or the API's issue-comment endpoint for findings, and never `--approve` or
+  `--request-changes` unless the user says so: the review must carry the machine header below so
+  other agents can read it.
 - First line, a machine header:
   `<!-- agent-task-spec v1 | reviewer: claude-code | reviewed_head: <full sha> -->`; a later
   review bumps the version and adds `| supersedes: v<previous>`, and says it is the single source

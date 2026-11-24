@@ -59,6 +59,7 @@ blocks/                   # forward-looking: manifests grouping related steps â€
 docs/                     # shared knowledge â€” see docs/README.md
 .claude/skills/wasm-actions/  # auto-loads that knowledge into Claude Code sessions in this repo
 .claude/skills/review-pr/     # how to handle a PR: triage, review, re-review, merge (say "handle the PR")
+CLAUDE.md                 # standing instructions for Claude Code here; routes every PR review to the review-pr skill
 scripts/                  # step-lint.py (`just step-lint`) and its tests
 ```
 
