@@ -3,7 +3,7 @@
   "label": "Gzip",
   "category": "Misc",
   "icon": {
-    "name": "DataIcon",
+    "name": "ZipIcon",
     "color": "Orange"
   },
   "options": [
