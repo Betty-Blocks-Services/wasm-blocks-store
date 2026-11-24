@@ -1,0 +1,111 @@
+{
+  "description": "Puts the files of a collection into one ZIP file and returns a file reference. Save the reference with a Create or Update step: this step does not store it in a record.",
+  "label": "ZIP",
+  "category": "Misc",
+  "icon": {
+    "name": "FileZIPIcon",
+    "color": "Orange"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Value",
+        "allowedKinds": [
+          "COLLECTION"
+        ],
+        "allowLazyCollection": false,
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "collection",
+      "label": "Collection to read files from",
+      "info": "A collection variable with the records whose files go into the ZIP. Records without a file are skipped."
+    },
+    {
+      "meta": {
+        "type": "Property",
+        "model": "collection",
+        "allowedKinds": [
+          "FILE",
+          "IMAGE"
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "configuration": {
+        "dependsOn": [
+          {
+            "option": "collection",
+            "action": "CLEAR"
+          }
+        ]
+      },
+      "name": "property-source",
+      "label": "Property to read files from",
+      "info": "The file or image property of the collection's model that holds the files. Files with the same name get _1, _2 before the extension."
+    },
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model-target",
+      "label": "Model to save file into",
+      "info": "The model of the Create or Update step that saves the ZIP. The file reference only fits that model and property."
+    },
+    {
+      "meta": {
+        "type": "Property",
+        "model": "model-target",
+        "allowedKinds": [
+          "FILE"
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "configuration": {
+        "dependsOn": [
+          {
+            "option": "model-target",
+            "action": "CLEAR"
+          }
+        ]
+      },
+      "name": "property-target",
+      "label": "Property to save file into",
+      "info": "The file property the ZIP will be saved in by the Create or Update step after this one."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "default": "zip",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "file-name",
+      "label": "Name for the ZIP file",
+      "info": "The file name; .zip is added unless the name already ends in it."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "reference",
+      "label": "As",
+      "info": "The file reference of the ZIP. Put it in the file property with a Create or Update step."
+    }
+  ],
+  "yields": "NONE"
+}

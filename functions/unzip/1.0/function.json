@@ -1,0 +1,75 @@
+{
+  "description": "Extracts the files from a ZIP file and returns a list of file references. Save them with a Loop and a Create or Update step: this step does not store them in records.",
+  "label": "UNZIP",
+  "category": "Misc",
+  "icon": {
+    "name": "FileZIPIcon",
+    "color": "Teal"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Value",
+        "allowedKinds": [
+          "FILE"
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "zip-file",
+      "label": "ZIP file",
+      "info": "The ZIP file to extract, for example the file property of a record. Folders inside the ZIP are flattened; macOS metadata files are skipped."
+    },
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model-target",
+      "label": "Model to save the extracted files into",
+      "info": "The model of the Create or Update step that saves the extracted files. The file references only fit that model and property."
+    },
+    {
+      "meta": {
+        "type": "Property",
+        "model": "model-target",
+        "allowedKinds": [
+          "FILE"
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "configuration": {
+        "dependsOn": [
+          {
+            "option": "model-target",
+            "action": "CLEAR"
+          }
+        ]
+      },
+      "name": "property-target",
+      "label": "Property to save the extracted files into",
+      "info": "The file property the extracted files will be saved in. All files go into this one property."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Array",
+          "dataType": "STRING"
+        }
+      },
+      "name": "references",
+      "label": "As",
+      "info": "The file references of the extracted files, in ZIP order. Use a Loop step over them and a Create or Update step to save each file."
+    }
+  ],
+  "yields": "NONE"
+}

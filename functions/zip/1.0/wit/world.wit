@@ -1,0 +1,35 @@
+package betty-blocks:zip@1.0.0;
+
+interface zip {
+    use betty-blocks-types:data-api/data-api@3.0.0.{helper-context};
+    use betty-blocks-types:types/types@3.0.0.{betty-model, betty-property};
+
+    // The collection comes from a Value option limited to collections. Value options arrive as
+    // JSON text (UNZIP's file input proved this on a canvas), so the records can be read whatever
+    // the model's fields are. A Collection option does not work: it passes the records as objects,
+    // which no generic WIT type can take (see docs/developer-learnings-log.md, 2026-11-24).
+    type json-string = string;
+
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `helper-context` is injected by the platform and is not an option.
+    // A Property option arrives as a list (the platform passes [{ kind, name }]).
+    // The collection's records are JSON objects keyed by property name; a file property's value
+    // is { name, url } (the shape the native send-mail step reads).
+    zip: func(
+        helper-context: helper-context,
+        collection: json-string,
+        property-source: list<betty-property>,
+        model-target: betty-model,
+        property-target: list<betty-property>,
+        file-name: option<string>,
+    ) -> result<string, string>;
+}
+
+// Named after the step, like data-api-request's world (see the note there about `main`).
+world zip-world {
+    import betty-blocks-types:data-api/data-api@3.0.0;
+    import betty-blocks-types:types/types@3.0.0;
+    import betty-blocks-types:upload-file/upload-file@4.0.0;
+
+    export zip;
+}
