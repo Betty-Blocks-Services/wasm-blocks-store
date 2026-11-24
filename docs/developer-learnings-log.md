@@ -8,6 +8,20 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## My BB's function.json editor refuses to change a WIT `string` option to a Select, which `bb functions publish` accepts (2026-11-20)
+
+**Fact:** My BB now has a `function.json` editor for an uploaded Wasm step. After uploading `export-to-csv` 1.0 in the IDE (its options were generated from the WIT, so `file-type: string` became a Text option), changing that option in the editor to `"type": "Select"` with values `csv`/`xlsx` was refused: `Option "file-type" can not change from Text to Select, the component does not accept that`.
+
+**How found:** Rob, 2026-11-20, in the My BB function.json editor.
+
+**Why it matters:** the same combination (a WIT `string` parameter with a `Select` option) is accepted by `bb functions publish` and works on a canvas: `data-api-request` (`query-type`, `sort-order`, `output-type`) is published that way. So the editor checks option types against the WIT more strictly than the publish endpoint does, and refuses a step shape that is known to work. Until that is resolved, publish steps with Select options through the CLI (see `testing-a-step-in-a-real-app.md`). This partly overtakes the 2026-08-10 entry: `function.json` can now be edited after an IDE upload, but not every change is allowed.
+
+**Not tested:** whether the editor accepts a Select for a WIT `enum` parameter, and which other type changes it refuses (e.g. Text to Model, Property or Map).
+
+**Status:** the error was seen firsthand on 2026-11-20. That the editor and the CLI disagree is an inference from `data-api-request` working; the two were not compared on the same step. Reported to the product team: open.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:

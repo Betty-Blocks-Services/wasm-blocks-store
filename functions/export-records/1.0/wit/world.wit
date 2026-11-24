@@ -1,0 +1,60 @@
+package betty-blocks:export-records@1.0.0;
+
+interface export-records {
+    use betty-blocks-types:data-api/data-api@3.0.0.{helper-context};
+    use betty-blocks-types:types/types@3.0.0.{betty-model, betty-property};
+
+    // Map options arrive as a JSON string.
+    type json-string = string;
+
+    // The Select options are enums: each value in function.json is a case name here, the
+    // convention of the native HTTP step's betty-http-method/betty-http-protocol enums. A case name
+    // is kebab-case words, each all lowercase or all UPPERCASE (`ASC` is valid), and cannot be a
+    // symbol, so the delimiter values are names (`comma`, not `,`).
+    enum file-type {
+        csv,
+        excel,
+    }
+
+    enum sort-order {
+        ASC,
+        DESC,
+    }
+
+    enum delimiter {
+        semicolon,
+        comma,
+        pipe,
+        tab,
+        space,
+    }
+
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `helper-context` is injected by the platform and is not an option.
+    // `file-type` is not called `type` because `type` is a WIT keyword.
+    // A Property option arrives as a list (the platform passes [{ kind, name }]).
+    export-records: func(
+        helper-context: helper-context,
+        file-type: file-type,
+        model-source: betty-model,
+        filter: option<string>,
+        filter-variables: json-string,
+        property-sort: option<list<betty-property>>,
+        sort-order: sort-order,
+        delimiter: delimiter,
+        model-target: betty-model,
+        property-target: list<betty-property>,
+        file-name: option<string>,
+        export-property-mapping: json-string,
+        format-property-mapping: json-string,
+        use-bom: option<bool>,
+    ) -> result<string, string>;
+}
+
+world export-records-world {
+    import betty-blocks-types:data-api/data-api@3.0.0;
+    import betty-blocks-types:types/types@3.0.0;
+    import betty-blocks-types:upload-file/upload-file@4.0.0;
+
+    export export-records;
+}
