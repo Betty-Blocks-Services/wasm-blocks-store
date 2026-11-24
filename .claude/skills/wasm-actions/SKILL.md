@@ -35,7 +35,8 @@ own product team's real convention in `block-store-wasm-components`/`native-wasm
   just because CI is green. If you don't have push access to open a PR, say so explicitly
   rather than silently pushing to `main` anyway or dropping the change.
 - To review a PR, or to take one from open to merge, use the
-  [`review-pr` skill](../review-pr/SKILL.md). Before opening a step PR yourself, run
+  [`review-pr` skill](../review-pr/SKILL.md) and nothing else (the `code-review` skill is a step
+  inside it); `CLAUDE.md` says the same. Before opening a step PR yourself, run
   `just step-lint`.
 
 Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.

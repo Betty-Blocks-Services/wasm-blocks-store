@@ -187,10 +187,13 @@ the diff. This is a small, early repo; a few minutes of real testing per PR is c
 expensive to skip once there are dozens of steps depending on each other's conventions being
 right.
 
-The `review-pr` skill does that review. In a Claude Code session in this clone, say "handle the
-PR": it checks out the branch, runs the same checks as CI, reviews the change against the
-checklists above (with scoped reviewers only for a step with real logic), and posts its findings
-as a review that another agent can act on. See [`.claude/skills/review-pr/SKILL.md`](.claude/skills/review-pr/SKILL.md).
+The `review-pr` skill does that review, and it is the only way PRs are reviewed here. In a Claude
+Code session **opened in this clone**, say "handle the PR" (or "review PR 12", or "review the open
+PRs"): the repo's `CLAUDE.md` sends any such request to the skill. It reads this file and the PR
+template in full, checks out the branch, runs the same checks as CI, runs the `code-review` skill
+for correctness bugs when the PR changes code, reviews the change against the checklists above
+(with scoped reviewers only for a step with real logic), and posts its findings as a GitHub review
+that another agent can act on. See [`.claude/skills/review-pr/SKILL.md`](.claude/skills/review-pr/SKILL.md).
 It never posts, pushes or merges without being told to. How a step behaves on a real canvas is
 the author's evidence (the live-test item above): the review checks that the PR says what kind of app
 it was tested on (and names no customer or app) and the paths that were tested, and lists the ones
