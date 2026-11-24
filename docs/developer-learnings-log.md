@@ -8,6 +8,20 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## There is no published list of step icon names; the colors are a fixed list of 8 (2026-11-24)
+
+**Fact:** the schema `bb functions validate` uses ([`bettyblocks/json-schema` `schemas/actions/function.json`](https://github.com/bettyblocks/json-schema/blob/master/schemas/actions/function.json), last changed 2026-11-16) fixes `icon.color` to `Yellow`, `Green`, `Pink`, `Orange`, `Purple`, `Blue`, `Teal`, `Grey`, but `icon.name` is any string ("defined by a set we have available in our framework"). The public `@betty-blocks/design` package (30.0.0) has 198 icon components, but it is not that set: 10 of the 18 names the official steps use (`UploadIcon`, `TrashIcon`, `ActionsIcon`, ...) are not in it.
+
+Icon names known to work, because an official step or a step in this repo uses them: `ActionsIcon`, `ArrayIcon`, `ArrowClockwiseIcon`, `AtIcon`, `BracketsCurly`, `CloudIcon`, `DataIcon`, `DataJumpUpIcon`, `ExpressionIcon`, `FileLogIcon`, `FinishIcon`, `LockIcon`, `ObjectIcon`, `PlusIcon`, `PublicPageIcon`, `QuestionIcon`, `TextIcon`, `TrashIcon`, `UploadIcon`, `VariableIcon`.
+
+**How found:** read the schema and every `function.json` in `native-wasm-components` and `block-store-wasm-components`, and unpacked `@betty-blocks/design` from npm, on 2026-11-24.
+
+**Why it matters:** an icon name outside the known list may pass validation and still not render; try it on a canvas first. Belongs in the crash course's `function.json` section.
+
+**Status:** the color list and the known-good names are confirmed from source. What the IDE shows for an unknown name was not tested: open.
+
+---
+
 ## `cargo test` here needs Rust 1.94 or newer, and clippy 1.94 rejects existing code in `data-api-query` (2026-11-24)
 
 **Fact:** the `Cargo.lock` on `main` resolves `wasmtime-testing-helper` to a wasmtime whose Cranelift crates (`cranelift-codegen` 0.133.3 and others) require rustc 1.94. With rustc 1.93, `cargo build --target wasm32-wasip2` still works (the components do not depend on wasmtime), but `just test` stops before compiling anything with `rustc 1.93.0 is not supported by the following packages`. With Rust 1.94.1, `just test` passes. `cargo clippy --all-targets -- -D warnings` (`just quality-check`) on 1.94.1 then fails on `functions/data-api-query/1.0/src/query.rs:188` ("this boolean expression can be simplified"), code that passed CI on 2026-10-24 with an older clippy.
