@@ -65,6 +65,15 @@ Report the cost at the end (section 8).
    (<sha>)` replies from it and from the comments after it, and go to section 6. If its
    `reviewed_head` is still the current head and nobody has written since, say there is nothing
    new to review and stop.
+
+   **An earlier round without the header also counts.** A plain review or comment by the same
+   account (`gh api user --jq .login`; list them with `gh pr view <n> --json reviews,comments`),
+   from before this skill, has no `reviewed_head` and no task ids. Treat it as the previous round:
+   its reviewed head is the last commit committed before it was posted (`gh pr view <n> --json
+   commits`), its items are the open tasks, and the author's reply to it is the "done" list. Go to
+   section 6, and in the first review that carries the header list each of its items in the
+   status table (fixed, partly fixed, not fixed, with the commit that changed it). Say the new
+   review supersedes that comment; it is `v1` of the header.
 3. **Size.** Count changed lines without lockfiles (`Cargo.lock` can be most of a PR). Read the
    diff (`gh pr diff <n>`); do not delegate this reading for a small PR.
 4. **Pick the lane(s)** from `.github/PULL_REQUEST_TEMPLATE.md`: **step** (new or updated step),
@@ -233,10 +242,17 @@ format:
 - Then a verdict (plain words, or as in PR 8: `APPROVE-AFTER-T8`), context (branch, base,
   reviewed head, what was verified), constraints that apply to every task, and the tasks.
 - One task per finding: `T1..`, a tag (security, logic, docs, tests), severity, status
-  (confirmed or suspected + score), where (a `file:line`, plus a permalink at the full SHA
+  (confirmed, or suspected **with its 0-100 score**: never "suspected" alone), where (a
+  `file:line`, plus a permalink at the full SHA
   `https://github.com/<owner>/<repo>/blob/<full-sha>/<path>#L<a>-L<b>`: our addition, PR 8 used
-  textual anchors), failing input -> wrong output, suggested fix, and an `accept` check that
-  says how to tell it is fixed. Mark tasks only a human can do ("not something an agent can
+  textual anchors; **every task has one**, docs and suggestions included), failing input -> wrong
+  output, suggested fix, and an `accept` check that says how to tell it is fixed. A reply
+  `T4: done` must mean one thing: when a task would hold several separate fixes (ten README
+  differences, seven stale comments), give each its own id (`T4a`, `T4b`, ...), each with its own
+  severity, permalink and `accept`, instead of one task with a list. Suggestions may share one
+  `T` id only when each is a single line and none blocks the merge, and each still names its
+  file:line. Length is not a concern: the review is input for an agent, so completeness beats
+  brevity. Mark tasks only a human can do ("not something an agent can
   do"). Say "Do not merge" until the blocking tasks are done, and give the reply protocol
   (`T1: done (<sha>)`).
 - Then: undocumented differences, docs to add, test gaps, conventions deviations, and what was
