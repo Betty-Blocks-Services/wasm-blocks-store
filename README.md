@@ -116,4 +116,12 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+Two file-archive steps, Wasm ports of the ActionsJS ZIP and UNZIP steps, tested on a canvas of a
+test app:
+
+- `functions/zip/1.0/` (ZIP) — puts the files of a collection into one ZIP file and returns its file
+  reference.
+- `functions/unzip/1.0/` (UNZIP) — extracts the files from a ZIP file and returns their file
+  references.
+
 See `docs/developer-learnings-log.md` for the full history.
