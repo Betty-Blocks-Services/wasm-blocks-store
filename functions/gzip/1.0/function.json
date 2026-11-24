@@ -1,0 +1,81 @@
+{
+  "description": "Compresses data with gzip. Takes text or base64, returns base64 (or text) so the result can go in an API payload, e.g. a bank payment file.",
+  "label": "Gzip",
+  "category": "Misc",
+  "icon": {
+    "name": "DataIcon",
+    "color": "Orange"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "data",
+      "label": "Data",
+      "info": "The data to compress: plain text such as XML, or a base64 string such as a file returned by another system. Set Input encoding to match."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "utf8",
+        "values": [
+          {
+            "label": "UTF-8 text",
+            "value": "utf8"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "input-encoding",
+      "label": "Input encoding",
+      "info": "UTF-8 text: Data is used as is. Base64: Data is base64-decoded first (standard base64; line breaks are ignored)."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "base64",
+        "values": [
+          {
+            "label": "UTF-8 text",
+            "value": "utf8"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "output-encoding",
+      "label": "Output encoding",
+      "info": "Base64: the compressed bytes as a standard, padded base64 string. Gzip output is binary, so UTF-8 text fails for almost any input."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "The compressed data, base64-encoded unless Output encoding says otherwise."
+    }
+  ],
+  "yields": "NONE"
+}

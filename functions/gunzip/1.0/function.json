@@ -1,0 +1,81 @@
+{
+  "description": "Decompresses gzip data, the inverse of the Gzip step. Takes base64 (or text), returns UTF-8 text (or base64 for binary content).",
+  "label": "Gunzip",
+  "category": "Misc",
+  "icon": {
+    "name": "DataIcon",
+    "color": "Orange"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "data",
+      "label": "Data",
+      "info": "The gzip data to decompress, normally as a base64 string (it starts with H4sI). Set Input encoding to match."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "base64",
+        "values": [
+          {
+            "label": "UTF-8 text",
+            "value": "utf8"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "input-encoding",
+      "label": "Input encoding",
+      "info": "Base64: Data is base64-decoded first (standard base64; line breaks are ignored). UTF-8 text: only for gzip data that is valid text, which is rare."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "utf8",
+        "values": [
+          {
+            "label": "UTF-8 text",
+            "value": "utf8"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "output-encoding",
+      "label": "Output encoding",
+      "info": "UTF-8 text: the decompressed data as text, e.g. XML. Base64: the decompressed bytes as base64, for binary content such as a PDF."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "The decompressed data, as text unless Output encoding says base64."
+    }
+  ],
+  "yields": "NONE"
+}

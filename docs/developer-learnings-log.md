@@ -8,6 +8,18 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## `cargo test` here needs Rust 1.94 or newer, and clippy 1.94 rejects existing code in `data-api-query` (2026-11-24)
+
+**Fact:** the `Cargo.lock` on `main` resolves `wasmtime-testing-helper` to a wasmtime whose Cranelift crates (`cranelift-codegen` 0.133.3 and others) require rustc 1.94. With rustc 1.93, `cargo build --target wasm32-wasip2` still works (the components do not depend on wasmtime), but `just test` stops before compiling anything with `rustc 1.93.0 is not supported by the following packages`. With Rust 1.94.1, `just test` passes. `cargo clippy --all-targets -- -D warnings` (`just quality-check`) on 1.94.1 then fails on `functions/data-api-query/1.0/src/query.rs:188` ("this boolean expression can be simplified"), code that passed CI on 2026-10-24 with an older clippy.
+
+**How found:** building the `gzip`/`gunzip` steps on 2026-11-24 on a machine whose default toolchain was 1.93. Installed 1.94 next to it (`rustup toolchain install 1.94 --target wasm32-wasip2 -c clippy -c rustfmt`) and ran the checks with `RUSTUP_TOOLCHAIN=1.94`, without changing the default toolchain.
+
+**Why it matters:** CI uses the latest stable Rust, so the next PR CI run will probably hit the same clippy error, whatever that PR changes. Fixing `query.rs:188` unblocks it. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
+
+**Status:** confirmed locally on 2026-11-24. Whether CI fails was not checked (no CI run since 2026-10-24): open.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:

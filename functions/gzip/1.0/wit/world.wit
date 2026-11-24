@@ -1,0 +1,19 @@
+package betty-blocks:gzip@1.0.0;
+
+interface gzip {
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `data` is an option so that a variable that is empty at run time
+    // is handled as empty input instead of failing before the step runs.
+    // The encodings are plain strings with a Select option in function.json, the same shape
+    // as data-api-request's `sort-order`. Only strings pass between steps, so binary data
+    // never leaves this step: it is always encoded as base64 or UTF-8 text on the way in and out.
+    gzip: func(
+        data: option<string>,
+        input-encoding: string,
+        output-encoding: string,
+    ) -> result<string, string>;
+}
+
+world main {
+    export gzip;
+}
