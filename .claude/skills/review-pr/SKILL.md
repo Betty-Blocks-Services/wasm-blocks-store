@@ -31,10 +31,16 @@ process PRs, reviewers only for a step with real logic, a cheaper model wherever
 Report the cost at the end (section 8).
 
 ## 0. Before anything else (every run, no exceptions)
-1. **Be in a clone of this repo.** `git remote get-url origin` must name
-   `Betty-Blocks-Services/wasm-blocks-store`. If the session is in a scratch folder or another
-   project, stop and ask the user to open the session in the clone. Do not review from `gh` output
-   alone, and do not carry on without this skill, `CONTRIBUTING.md` and the template.
+1. **Be in a checkout of this repo**: a local clone, or the checkout a cloud session makes of it.
+   Check that `.claude/skills/review-pr/SKILL.md`, `CONTRIBUTING.md` and
+   `.github/PULL_REQUEST_TEMPLATE.md` exist in the working directory and that
+   `gh repo view --json nameWithOwner --jq .nameWithOwner` says
+   `Betty-Blocks-Services/wasm-blocks-store` (in a cloud session `origin` may be a proxy URL that
+   does not name the repo; do not rely on it). If the session is in a scratch folder or another
+   project, stop and ask the user to open the session on this repo (a local clone, or a cloud
+   session on the repo). If `gh` is not installed or not authenticated, stop and say so; do not
+   review from a web page or the API by another route. Do not review from `gh` output alone, and
+   do not carry on without this skill, `CONTRIBUTING.md` and the template.
 2. **Read in full, with the Read tool, the whole file each time:** `CONTRIBUTING.md` and
    `.github/PULL_REQUEST_TEMPLATE.md`. Not the first screenful, not a `head`, not a summary from
    an earlier run or from this skill. If a Read stops at its line limit, read the rest. Say in
@@ -70,7 +76,8 @@ Report the cost at the end (section 8).
    `functions/<name>/<version>/` directory; a bugfix may change a version in place.
 
 ## 2. Set up
-1. Work in this session's worktree, never the main checkout:
+1. Work in this session's own worktree (in a cloud session, the session's checkout is already
+   isolated), never someone's main checkout:
    `git fetch origin <branch> <base> && git checkout --detach origin/<branch>`. Note the full head
    SHA; every later comment cites it.
 2. Scratch files go in the session scratchpad; set `S=<that path>` and clear it at the end.
@@ -89,7 +96,10 @@ Report the cost at the end (section 8).
    generic ActionsJS schema and that a `.wasm` exists, never `function.json` against the WIT
    (developer-learnings-log, 2026-09-24). Skip the baseline for docs or process PRs without code;
    CI's result is enough. Do not let reviewers repeat it, and do not re-run it later as
-   confirmation. Check `git status` is clean afterwards.
+   confirmation. Check `git status` is clean afterwards. If a tool is missing (a cloud session
+   may lack `just`, `wkg` or the `wasm32-wasip2` target), install it when that is quick (`rustup
+   target add wasm32-wasip2`, `cargo install just`); otherwise take CI's result for that check and
+   say in the review which checks you did not run yourself.
 
 ## 3. Review
 **Required pass for every PR that changes code** (Rust, scripts, workflows, `Justfile`): run the

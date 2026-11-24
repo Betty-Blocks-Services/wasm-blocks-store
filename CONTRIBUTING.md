@@ -188,8 +188,8 @@ expensive to skip once there are dozens of steps depending on each other's conve
 right.
 
 The `review-pr` skill does that review, and it is the only way PRs are reviewed here. In a Claude
-Code session **opened in this clone**, say "handle the PR" (or "review PR 12", or "review the open
-PRs"): the repo's `CLAUDE.md` sends any such request to the skill. It reads this file and the PR
+Code session **opened on this repo** (a local clone, or a cloud session on the repo), say
+"handle the PR" (or "review PR 12", or "review the open PRs"): the repo's `CLAUDE.md` sends any such request to the skill. It reads this file and the PR
 template in full, checks out the branch, runs the same checks as CI, runs the `code-review` skill
 for correctness bugs when the PR changes code, reviews the change against the checklists above
 (with scoped reviewers only for a step with real logic), and posts its findings as a GitHub review
