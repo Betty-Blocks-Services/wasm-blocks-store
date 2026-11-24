@@ -1,10 +1,10 @@
 {
   "description": "Compresses data with gzip. Takes text or base64, returns base64 (or text) so the result can go in an API payload, e.g. a bank payment file.",
-  "label": "Gzip",
+  "label": "GZIP",
   "category": "Misc",
   "icon": {
-    "name": "ZipIcon",
-    "color": "Orange"
+    "name": "FileZIPIcon",
+    "color": "Purple"
   },
   "options": [
     {

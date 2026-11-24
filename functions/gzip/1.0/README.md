@@ -1,8 +1,8 @@
-# Gzip
+# GZIP
 
 Compresses data with gzip and returns it as text, so it can go into an API payload. A typical use
 is a bank or government API that wants a file "compressed with GZIP and encoded as base64". The
-counterpart is [Gunzip](../../gunzip/1.0/README.md).
+counterpart is [GUNZIP](../../gunzip/1.0/README.md).
 
 The steps only exchange text values, so the binary gzip data never leaves the step: you choose
 how the input is read (plain text or base64) and how the result is written (base64 or text).
@@ -16,11 +16,11 @@ including decompressing the output with the system's `gzip -d`). Not yet tested 
 |---|---|
 | Data | The data to compress. Plain text such as XML, or base64 such as a file that another system returned as base64 |
 | Input encoding | `utf8` (default): Data is compressed as it is, as UTF-8 bytes. `base64`: Data is base64-decoded first |
-| Output encoding | `base64` (default): the gzip bytes as standard base64. `utf8` only works if the gzip bytes happen to be valid UTF-8, which is practically never; it exists for symmetry with Gunzip |
+| Output encoding | `base64` (default): the gzip bytes as standard base64. `utf8` only works if the gzip bytes happen to be valid UTF-8, which is practically never; it exists for symmetry with GUNZIP |
 | Result | The compressed data, encoded as Output encoding says |
 
 Example: a file arrives as base64 and the receiving API wants it gzipped and base64-encoded. Use
-one Gzip step with Input encoding `base64` and Output encoding `base64`. Decoding and re-encoding
+one GZIP step with Input encoding `base64` and Output encoding `base64`. Decoding and re-encoding
 happen inside the step.
 
 ## Things to know

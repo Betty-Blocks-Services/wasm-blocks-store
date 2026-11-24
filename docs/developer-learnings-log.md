@@ -8,7 +8,7 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
-## Step icon names: no published list, but the IDE upload flow offers 436; the colors are a fixed list of 8 (2026-11-24)
+## Step icon names: no published list, an unknown name silently shows a lightning icon; the colors are a fixed list of 8 (2026-11-24)
 
 **Fact:** the schema `bb functions validate` uses ([`bettyblocks/json-schema` `schemas/actions/function.json`](https://github.com/bettyblocks/json-schema/blob/master/schemas/actions/function.json), last changed 2026-11-16) fixes `icon.color` to `Yellow`, `Green`, `Pink`, `Orange`, `Purple`, `Blue`, `Teal`, `Grey`, but `icon.name` is any string ("defined by a set we have available in our framework"). The public `@betty-blocks/design` package (30.0.0) has 198 icon components, but it is not that set: 10 of the 18 names the official steps use (`UploadIcon`, `TrashIcon`, `ActionsIcon`, ...) are not in it.
 
@@ -16,11 +16,11 @@ Icon names known to work, because an official step or a step in this repo uses t
 
 **How found:** read the schema and every `function.json` in `native-wasm-components` and `block-store-wasm-components`, and unpacked `@betty-blocks/design` from npm, on 2026-11-24.
 
-Also confirmed: the icon picker in the IDE's "Add custom Wasm step" upload flow offers 436 icons, so that picker is the practical list to choose from. `ZipIcon` works for a Wasm step, and `FileZIPIcon` is used by the ActionsJS ZIP/UNZIP steps in `Betty-Blocks-Services/zip-unzip-action-function`.
+Also confirmed: the icon picker in the IDE's "Add custom Wasm step" upload flow offers 436 icons, so that picker is the practical list to choose from. `FileZIPIcon` (used by the ActionsJS ZIP/UNZIP steps in `Betty-Blocks-Services/zip-unzip-action-function`) renders for a Wasm step. `ZipIcon`, which is in `@betty-blocks/design`, does not: a published step with it shows a lightning icon instead. **So an unknown icon name is not rejected at publish; the step silently gets that fallback icon.**
 
-**Why it matters:** an icon name outside the known list may pass validation and still not render; try it on a canvas first. Belongs in the crash course's `function.json` section.
+**Why it matters:** an icon name outside the known list passes validation and publishing, then shows a lightning icon. Check the icon in the step palette after publishing. Belongs in the crash course's `function.json` section.
 
-**Status:** the color list and the known-good names are confirmed from source; the 436 icons and `ZipIcon` were confirmed by Rob in the IDE on 2026-11-24. What the IDE shows for an unknown name was not tested: open.
+**Status:** the color list and the known-good names are confirmed from source; the 436 icons, `FileZIPIcon` rendering and the lightning fallback for `ZipIcon` were seen by Rob in the IDE on 2026-11-24: confirmed.
 
 ---
 

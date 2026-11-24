@@ -1,10 +1,10 @@
 {
-  "description": "Decompresses gzip data, the inverse of the Gzip step. Takes base64 (or text), returns UTF-8 text (or base64 for binary content).",
-  "label": "Gunzip",
+  "description": "Decompresses gzip data, the inverse of the GZIP step. Takes base64 (or text), returns UTF-8 text (or base64 for binary content).",
+  "label": "GUNZIP",
   "category": "Misc",
   "icon": {
-    "name": "ZipIcon",
-    "color": "Teal"
+    "name": "FileZIPIcon",
+    "color": "Blue"
   },
   "options": [
     {
