@@ -12,9 +12,10 @@ doing anything else, then follow it exactly, including its section 0 (what to re
 which pass to run). Do not improvise a review, and do not use a generic review command on its
 own: `code-review` is a step inside the skill, not a replacement for it.
 
-- Review from a session whose working directory is a clone of this repo. If it is not (a scratch
-  folder, another project), stop and ask the user to open the session in the clone: the skill,
-  `CONTRIBUTING.md` and the PR template are only available there.
+- Review from a session whose working directory is a checkout of this repo: a local clone, or a
+  cloud session on the repo. If it is not (a scratch folder, another project), stop and ask the
+  user to open the session on this repo: the skill, `CONTRIBUTING.md` and the PR template are only
+  available there.
 - Read `CONTRIBUTING.md` and `.github/PULL_REQUEST_TEMPLATE.md` **in full, every run** (read the
   whole file, not the first screenful). The checklists in them are the source of truth; the
   summaries in the skill are not.
