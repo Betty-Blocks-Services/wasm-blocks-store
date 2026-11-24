@@ -135,10 +135,14 @@ and format/lint being covered by CI and the baseline):
   `wasm-actions` skill, `README.md`, including the `just` recipe list); says what contributors
   now do differently; dogfooded. A change to this skill or to `step-lint` is a process change.
 
-**Step lane with real logic (not a small change; a full set on a ~2,300 line step cost about 465k
-subagent tokens, so skip reviewers for anything under ~200 changed lines):** launch the
-reviewers whose trigger the diff hits, in one message, in the background, each with a
-non-overlapping scope and the baseline results. Use the fully qualified agent names.
+**Step lane with real logic (not a small change; skip reviewers for anything under ~200 changed
+lines). Cost: about 120k subagent tokens per reviewer (a full set of five on a ~2,300-line port
+cost about 625k), so launch only the reviewers whose trigger the diff hits:** in one message, in
+the background, each with a non-overlapping scope and the baseline results. Use the fully
+qualified agent names. Each reviewer earned its place on that PR with findings nobody else could
+make (fidelity against the original, docs and sibling conventions, test gaps, silent failures,
+security probes), so do not merge or drop one to save tokens; leave out the ones whose trigger the
+diff does not hit.
 
 | Agent | Launch when the diff... |
 |---|---|
@@ -163,6 +167,9 @@ Fidelity omit `model` so they inherit the session's, because reasoning and proof
 matter there. Use `haiku` only for reading-only work (a large-diff scan, scoring).
 
 **Every brief says:**
+- **Where to read, to keep the reading short:** the diff, the files it names, ONE sibling step
+  for comparison (name it), and only the `docs/developer-learnings-log.md` entries this skill or
+  you cite (by date). Do not read the whole log or explore other steps.
 - Branch, full SHA and the diff to review: `git diff origin/<base>...HEAD` (the toolkit agents
   default to the unstaged working diff, which is empty here).
 - **Read-only**: no edits, commits, pushes or PR comments; scratch location; word limit.
@@ -186,15 +193,21 @@ the merge).
    contradicts a known fact is weaker than it looks) and against the PR's own README.
    The `code-review` skill ends with its own findings report in the app: that is not the PR
    review. It is input to this section, and nothing is posted to GitHub until section 5.
-2. **Confirmed** findings stay. For each **suspected** finding, launch one cheap verifier in
-   parallel (`model: haiku`, or `sonnet` for a subtle one) with the finding, the code and this
-   scale: 0 false positive or pre-existing; 25 might be real, unverified; 50 verified but minor or
-   rare; 75 verified, will be hit in practice; 100 certain and frequent. Keep suspected findings
-   scoring 50 or more. Findings below 50 go in one "considered, not reported" line. Never drop a
-   confirmed finding or lower a confirmed security finding.
+2. **Confirmed** findings stay. For each **suspected** finding, first try to settle it yourself by
+   reading the code it points at or running the probe. Launch a cheap verifier (`model: haiku`, or
+   `sonnet` for a subtle one) only for a suspected finding you cannot settle that way and that
+   would change the verdict, with the finding, the code and this scale: 0 false positive or
+   pre-existing; 25 might be real, unverified; 50 verified but minor or rare; 75 verified, will
+   be hit in practice; 100 certain and frequent. Keep suspected findings scoring 50 or more.
+   Findings below 50 go in one "considered, not reported" line. Never drop a confirmed finding or
+   lower a confirmed security finding.
 3. Spot-check yourself only what drives a decision or looks surprising. Say which claims you
    checked and which you took on trust.
-4. Tell the user: **Critical** (wrong results or a security hole in realistic use: fix before
+4. **Tag every finding with where it came from** (`code-review`, security, conventions, test
+   coverage, silent failures, fidelity, or yourself), in the report to the user and in the posted
+   review. Several sources for one finding: list them all. This is how we see over time which
+   reviewers earn their cost, so never leave it out.
+5. Tell the user: **Critical** (wrong results or a security hole in realistic use: fix before
    merge), **Important** (real but rare, or a documented-behaviour gap), **Suggestions**,
    **Verified fine**, **Untested**, and the cost line. Then ask before posting anything.
 
@@ -255,4 +268,6 @@ Do this after a merge, or when the user ends the review without merging.
 - Final message: merge commit, what was left alone, the open follow-ups that were accepted or
   deferred, and **cost**: the reviewers launched, and the sum of the tokens their completion
   notices report (and the PR's size), so the size tiers above can be tuned with real numbers. Say
-  if a number is missing instead of estimating it.
+  if a number is missing instead of estimating it. The `code-review` pass runs in this session,
+  so its tokens are not in that sum: say so, and do not estimate them. Add which reviewers found
+  something no other source found, from the tags in section 4.
