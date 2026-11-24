@@ -47,20 +47,28 @@ fn gzip_natively(data: &[u8]) -> Vec<u8> {
 }
 
 /// Compresses with the system's `gzip`, so the step is checked against real-world gzip output.
-fn gzip_with_system_gzip(data: &[u8]) -> Vec<u8> {
-    let mut child = Command::new("gzip")
+/// Returns `None` (and the test skips) when `gzip` is not on PATH.
+fn gzip_with_system_gzip(data: &[u8]) -> Option<Vec<u8>> {
+    let spawned = Command::new("gzip")
         .arg("-c")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("the `gzip` command must be installed to run this test");
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("skipped: no `gzip` command on PATH");
+            return None;
+        }
+        Err(error) => panic!("could not start gzip: {error}"),
+    };
     let mut stdin = child.stdin.take().unwrap();
     let input = data.to_vec();
     let writer = std::thread::spawn(move || stdin.write_all(&input).unwrap());
     let output = child.wait_with_output().unwrap();
     writer.join().unwrap();
     assert!(output.status.success(), "gzip failed");
-    output.stdout
+    Some(output.stdout)
 }
 
 #[test]
@@ -79,8 +87,27 @@ fn round_trips_through_a_real_component_instance() {
 #[test]
 fn decompresses_system_gzip_output() {
     let xml = large_xml();
-    let compressed = STANDARD.encode(gzip_with_system_gzip(xml.as_bytes()));
+    let Some(compressed) = gzip_with_system_gzip(xml.as_bytes()) else {
+        return;
+    };
+    let compressed = STANDARD.encode(compressed);
     assert_eq!(gunzip(&compressed, "base64", "utf8").unwrap(), xml);
+}
+
+#[test]
+fn trailing_nul_padding_is_ignored_like_gzip_d_does() {
+    let mut padded = gzip_natively(b"Hello, world!");
+    padded.extend([0u8; 512]);
+    assert_eq!(
+        gunzip(&STANDARD.encode(padded), "base64", "utf8").unwrap(),
+        "Hello, world!"
+    );
+}
+
+#[test]
+fn empty_data_is_an_error_not_a_trap() {
+    let error = gunzip("", "base64", "utf8").unwrap_err();
+    assert!(error.contains("\"Data\" is empty"), "error was: {error}");
 }
 
 #[test]

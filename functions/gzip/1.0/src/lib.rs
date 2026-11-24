@@ -18,7 +18,11 @@ use crate::bindings::exports::betty_blocks::gzip::gzip::Guest;
 /// The most bytes this step accepts after decoding its input. A guard against payloads that
 /// would exhaust the component's memory; the platform's own limits for a text value have not
 /// been measured, so this is a conservative upper bound, not a documented platform limit.
+#[cfg(not(test))]
 const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+/// A lower limit for unit tests, so the size checks run fast in a debug build.
+#[cfg(test)]
+const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 /// Standard base64 (RFC 4648 section 4: `+` and `/`). Output is always padded; input is accepted
 /// with or without padding, because some systems drop the trailing `=`.

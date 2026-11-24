@@ -13,5 +13,4 @@ flate2 = { workspace = true }
 wit-bindgen = { workspace = true }
 
 [dev-dependencies]
-flate2 = { workspace = true }
 wasmtime-testing-helper = { workspace = true }

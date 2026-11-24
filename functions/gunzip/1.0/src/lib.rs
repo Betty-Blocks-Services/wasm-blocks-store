@@ -11,7 +11,7 @@ use std::io::Read;
 use base64::Engine;
 use base64::alphabet::STANDARD;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
-use flate2::read::MultiGzDecoder;
+use flate2::bufread::GzDecoder;
 
 use crate::bindings::exports::betty_blocks::gunzip::gunzip::Guest;
 
@@ -19,7 +19,11 @@ use crate::bindings::exports::betty_blocks::gunzip::gunzip::Guest;
 /// decompressing (a small gzip stream can expand to gigabytes). A guard against payloads that
 /// would exhaust the component's memory; the platform's own limits for a text value have not
 /// been measured, so this is a conservative upper bound, not a documented platform limit.
+#[cfg(not(test))]
 const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+/// A lower limit for unit tests, so the size checks run fast in a debug build.
+#[cfg(test)]
+const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 /// Standard base64 (RFC 4648 section 4: `+` and `/`). Output is always padded; input is accepted
 /// with or without padding, because some systems drop the trailing `=`.
@@ -100,25 +104,37 @@ fn encode_output(bytes: Vec<u8>, encoding: Encoding) -> Result<String, String> {
 /// The two bytes every gzip stream starts with (RFC 1952).
 const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
-/// Decompresses one gzip stream, or several concatenated ones (as `gzip -d` does), and stops
-/// with an error once the result would pass `MAX_INPUT_BYTES`.
+/// Decompresses one gzip stream, or several concatenated ones, and stops with an error once the
+/// result would pass `MAX_INPUT_BYTES`. Like `gzip -d`, it ignores anything after the last
+/// member that does not start with the gzip signature, such as the NUL padding some systems
+/// add to fill a block.
 fn decompress(input: &[u8]) -> Result<Vec<u8>, String> {
+    if input.is_empty() {
+        return Err(String::from(
+            "\"Data\" is empty — map it to the variable or property that holds the gzip data",
+        ));
+    }
     if !input.starts_with(&GZIP_MAGIC) {
         return Err(String::from(
             "\"Data\" is not gzip data: it does not start with the gzip signature (1f 8b, \"H4sI\" in base64) — check that the value really is gzip-compressed and that \"Input encoding\" matches how it is encoded",
         ));
     }
     let mut output = Vec::with_capacity(input.len().saturating_mul(4).min(MAX_INPUT_BYTES));
-    MultiGzDecoder::new(input)
-        .take(MAX_INPUT_BYTES as u64 + 1)
-        .read_to_end(&mut output)
-        .map_err(|error| {
-            format!("\"Data\" is not a valid gzip stream: {error} — the data may be truncated or corrupted")
-        })?;
-    if output.len() > MAX_INPUT_BYTES {
-        return Err(format!(
-            "the decompressed data is more than the {MAX_INPUT_BYTES} bytes this step can produce — the input is too large to decompress here"
-        ));
+    let mut remaining = input;
+    while remaining.starts_with(&GZIP_MAGIC) {
+        // The bufread decoder takes only the bytes of this member from `remaining`.
+        let budget = (MAX_INPUT_BYTES + 1 - output.len()) as u64;
+        GzDecoder::new(&mut remaining)
+            .take(budget)
+            .read_to_end(&mut output)
+            .map_err(|error| {
+                format!("\"Data\" is not a valid gzip stream: {error} — the data may be truncated or corrupted")
+            })?;
+        if output.len() > MAX_INPUT_BYTES {
+            return Err(format!(
+                "the decompressed data is more than the {MAX_INPUT_BYTES} bytes this step can produce — the input is too large to decompress here"
+            ));
+        }
     }
     Ok(output)
 }
@@ -178,6 +194,45 @@ mod tests {
     }
 
     #[test]
+    fn trailing_nul_padding_is_ignored() {
+        let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
+        bytes.extend([0u8; 512]);
+        assert_eq!(
+            run(&BASE64.encode(bytes), "base64", "utf8").unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn trailing_garbage_is_ignored() {
+        let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
+        bytes.extend(b"junk");
+        assert_eq!(
+            run(&BASE64.encode(bytes), "base64", "utf8").unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn a_broken_second_member_is_still_an_error() {
+        let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
+        bytes.extend([0x1f, 0x8b, 0x08]);
+        let error = run(&BASE64.encode(bytes), "base64", "utf8").unwrap_err();
+        assert!(
+            error.contains("not a valid gzip stream"),
+            "error was: {error}"
+        );
+    }
+
+    #[test]
+    fn empty_data_is_a_clear_error() {
+        for (data, encoding) in [("", "base64"), ("  \n", "base64"), ("", "utf8")] {
+            let error = run(data, encoding, "utf8").unwrap_err();
+            assert!(error.contains("\"Data\" is empty"), "error was: {error}");
+        }
+    }
+
+    #[test]
     fn non_gzip_input_is_a_clear_error() {
         let error = run(&BASE64.encode("<xml/>"), "base64", "utf8").unwrap_err();
         assert!(error.contains("not gzip data"), "error was: {error}");
@@ -218,6 +273,7 @@ mod tests {
 
     #[test]
     fn decompression_bomb_is_stopped() {
+        // MAX_INPUT_BYTES is 64 KiB in unit tests; the 32 MiB limit itself is the same code.
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
         std::io::Write::write_all(&mut encoder, &vec![0u8; MAX_INPUT_BYTES + 1]).unwrap();
         let bomb = encoder.finish().unwrap();
