@@ -10,8 +10,7 @@ ActionsJS ZIP step 1.1 (`Betty-Blocks-Services/zip-unzip-action-function`). The 
 
 **Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested
 locally: unit tests, and tests through a real component instance
-with mocked downloads and a mocked upload (the archive also opens with the system's `unzip`). Not
-yet tested on a canvas.
+with mocked downloads and a mocked upload (the archive also opens with the system's `unzip`).
 
 ## Options
 
@@ -32,11 +31,13 @@ yet tested on a canvas.
 - **Files are downloaded one at a time** from their URLs over `wasi:http`, the way the native
   send-mail step reads collection attachments. Only the current file and the archive so far are in
   memory. A download that fails (for example an expired link) fails the step with the HTTP status.
+  Error messages show a file's URL without its query string, which holds the URL's signature.
 - **Compression:** Deflate for every file. Entries have the fixed date 1980-01-01 and permissions
   `0644`.
 - **Size limits:** the ZIP can be at most the maximum file size of "Property to save file into"
-  (a setting on the property in the data model). Downloads are capped at 64 MiB per run, the step's
-  own memory guard.
+  (a setting on the property in the data model). Downloads are capped at 64 MiB per run and at 1000
+  files, the step's own guards. A download whose `Content-Length` is over the cap is refused before
+  it is read; otherwise reading stops as soon as the cap is passed.
 
 ### Differences from the ActionsJS step
 

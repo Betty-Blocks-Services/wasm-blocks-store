@@ -6,17 +6,18 @@ use zip::ZipArchive;
 use zip::result::ZipError;
 
 /// The most files one ZIP may hold. Every file becomes its own upload, so this keeps a single run
-/// bounded; not a measured platform limit.
+/// bounded; not a measured platform limit. Folders and metadata files are not counted.
 pub const MAX_FILES: usize = 1000;
 
-/// macOS and Windows metadata that archivers add, which is not part of the content. The same list
-/// as the ActionsJS UNZIP step.
+/// macOS and Windows metadata that archivers add, which is not part of the content: anything in a
+/// top-level `__MACOSX` folder, AppleDouble `._` files, `.DS_Store` and `Thumbs.db`. The same kinds
+/// as the ActionsJS UNZIP step, but matched on whole names, so `Thumbs.db.xml` is kept.
 fn is_metadata(path: &str) -> bool {
-    path.starts_with("__MACOSX/")
-        || path.starts_with("._")
-        || path.contains("/._")
-        || path.contains(".DS_Store")
-        || path.contains("Thumbs.db")
+    let name = base_name(path);
+    path.split(['/', '\\']).next() == Some("__MACOSX")
+        || name.starts_with("._")
+        || name == ".DS_Store"
+        || name.eq_ignore_ascii_case("Thumbs.db")
 }
 
 /// The file name without the folders it sits in inside the archive.
@@ -36,23 +37,17 @@ fn describe(error: ZipError) -> String {
     }
 }
 
-/// Calls `store` with the name and content of every file in the archive, in archive order.
-/// Folders and metadata files are skipped. Stops with an error once the extracted content would
-/// pass `max_total_bytes`, so a ZIP bomb cannot exhaust memory.
-pub fn for_each_file(
+/// The name and content of every file in the archive, in archive order. Folders and metadata
+/// files are skipped. Everything is extracted before anything is stored, so a broken archive stores
+/// nothing. Stops with an error once the extracted content would pass `max_total_bytes`, so a ZIP
+/// bomb cannot exhaust memory.
+pub fn extract_files(
     bytes: Vec<u8>,
     max_total_bytes: usize,
-    mut store: impl FnMut(&str, Vec<u8>) -> Result<(), String>,
-) -> Result<usize, String> {
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(describe)?;
-    if archive.len() > MAX_FILES {
-        return Err(format!(
-            "the ZIP holds {} entries, more than the {MAX_FILES} this step extracts in one run",
-            archive.len()
-        ));
-    }
     let mut remaining = max_total_bytes;
-    let mut stored = 0;
+    let mut files = Vec::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(describe)?;
         let path = entry.name().map_err(describe)?.to_string();
@@ -62,6 +57,11 @@ pub fn for_each_file(
         let name = base_name(&path);
         if name.is_empty() {
             continue;
+        }
+        if files.len() == MAX_FILES {
+            return Err(format!(
+                "the ZIP holds more than the {MAX_FILES} files this step extracts in one run"
+            ));
         }
         let mut content = Vec::new();
         (&mut entry)
@@ -73,10 +73,9 @@ pub fn for_each_file(
                 "the extracted files are larger than the {max_total_bytes} bytes this step can handle in one run"
             )
         })?;
-        store(name, content)?;
-        stored += 1;
+        files.push((name.to_string(), content));
     }
-    Ok(stored)
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -103,12 +102,7 @@ mod tests {
     }
 
     fn extract(bytes: Vec<u8>, limit: usize) -> Result<Vec<(String, Vec<u8>)>, String> {
-        let mut files = Vec::new();
-        for_each_file(bytes, limit, |name, content| {
-            files.push((name.to_string(), content));
-            Ok(())
-        })?;
-        Ok(files)
+        extract_files(bytes, limit)
     }
 
     #[test]
@@ -157,14 +151,50 @@ mod tests {
     }
 
     #[test]
-    fn a_storage_error_stops_the_extraction() {
-        let zip = make_zip(&[("a", b"1"), ("b", b"2")]);
-        let mut calls = 0;
-        let error = for_each_file(zip, 1024, |_, _| {
-            calls += 1;
-            Err(String::from("storage down"))
-        })
-        .unwrap_err();
-        assert_eq!((error.as_str(), calls), ("storage down", 1));
+    fn metadata_is_matched_on_whole_names() {
+        for path in [
+            "__MACOSX/docs/._a.txt",
+            "._a.txt",
+            "docs/._a.txt",
+            "docs/.DS_Store",
+            "Thumbs.db",
+            "docs/thumbs.db",
+        ] {
+            assert!(is_metadata(path), "{path} should be metadata");
+        }
+        for path in [
+            "Thumbs.db.xml",
+            "x.DS_Store.pdf",
+            "docs/__MACOSX/a.txt",
+            "a._b.txt",
+        ] {
+            assert!(!is_metadata(path), "{path} should be kept");
+        }
+    }
+
+    #[test]
+    fn the_file_limit_counts_only_files() {
+        let mut entries: Vec<(String, &[u8])> = vec![(String::from("docs/"), b"")];
+        entries.extend((0..MAX_FILES).map(|n| (format!("docs/{n}.txt"), &b"x"[..])));
+        entries.push((String::from("docs/.DS_Store"), b"meta"));
+        let as_refs: Vec<(&str, &[u8])> = entries
+            .iter()
+            .map(|(name, content)| (name.as_str(), *content))
+            .collect();
+        assert_eq!(
+            extract(make_zip(&as_refs), 1 << 20).unwrap().len(),
+            MAX_FILES
+        );
+
+        entries.push((String::from("one-too-many.txt"), b"x"));
+        let as_refs: Vec<(&str, &[u8])> = entries
+            .iter()
+            .map(|(name, content)| (name.as_str(), *content))
+            .collect();
+        let error = extract(make_zip(&as_refs), 1 << 20).unwrap_err();
+        assert!(
+            error.contains("more than the 1000 files"),
+            "error was: {error}"
+        );
     }
 }

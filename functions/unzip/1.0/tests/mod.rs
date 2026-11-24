@@ -191,13 +191,39 @@ fn a_file_that_is_not_a_zip_is_an_error() {
 }
 
 #[test]
-fn a_failed_download_is_an_error() {
+fn a_failed_download_is_an_error_without_the_signature() {
     let (result, _) = run_unzip(
-        r#"{"url":"https://assets.example/expired.zip"}"#,
+        r#"{"url":"https://assets.example/expired.zip?X-Amz-Signature=secret"}"#,
         Vec::new(),
     );
     let error = result.unwrap_err();
     assert!(error.contains("HTTP status 403"), "error was: {error}");
+    assert!(
+        error.contains("https://assets.example/expired.zip\""),
+        "error was: {error}"
+    );
+    assert!(!error.contains("secret"), "error was: {error}");
+}
+
+#[test]
+fn a_download_over_the_limit_is_refused() {
+    let (result, uploads) = run_unzip(FILE_VALUE, vec![0; 64 * 1024 * 1024 + 1]);
+    let error = result.unwrap_err();
+    assert!(error.contains("larger than"), "error was: {error}");
+    assert!(uploads.is_empty());
+}
+
+#[test]
+fn a_zip_bomb_after_a_good_file_uploads_nothing() {
+    let bomb = vec![0; 64 * 1024 * 1024];
+    let archive = make_zip(&[("a.txt", b"hello"), ("bomb.bin", &bomb)]);
+    let (result, uploads) = run_unzip(FILE_VALUE, archive);
+    let error = result.unwrap_err();
+    assert!(
+        error.contains("extracted files are larger"),
+        "error was: {error}"
+    );
+    assert!(uploads.is_empty(), "uploaded: {}", uploads.len());
 }
 
 #[test]

@@ -22,15 +22,25 @@ with a mocked download and a mocked upload, including an archive made by the sys
 
 ## Behaviour
 
-- **Folders and metadata are skipped:** folder entries, `__MACOSX/`, `._` files, `.DS_Store` and
-  `Thumbs.db`, the same list as the ActionsJS step.
+- **Folders and metadata are skipped:** folder entries, a top-level `__MACOSX/` folder, `._` files,
+  `.DS_Store` and `Thumbs.db`, the same kinds as the ActionsJS step. They are matched on the whole
+  file name, so `Thumbs.db.xml` is kept (the ActionsJS step skipped it).
+- **The whole ZIP is extracted before anything is stored,** so a broken ZIP, a ZIP bomb or too many
+  files stores nothing. If an upload fails partway, the error names the files already uploaded.
+  The upload interface cannot remove them, and as the step returns no references they end up in no
+  record.
 - **Folders inside the ZIP are flattened:** `invoices/a.xml` is stored as `a.xml`.
 - **Errors** for: no file in "ZIP file", a failed download, a file that is not a ZIP, a
-  password-protected ZIP, or a failed upload. An empty ZIP gives an empty list.
+  password-protected ZIP, or a failed upload. An empty ZIP gives an empty list. Error messages show
+  the URL without its query string, which holds the URL's signature.
 - **Limits:** each extracted file can be at most the maximum file size of the target file property
   (a setting on the property in the data model); a larger file fails with both sizes in the error.
   Also 64 MiB for the ZIP and for all extracted files together (this stops ZIP bombs), and at most
-  1000 entries: the step's own guards.
+  1000 files (folders and metadata not counted): the step's own guards. A download whose
+  `Content-Length` is over 64 MiB is refused before it is read.
+- **Any `http(s)` URL is fetched.** "ZIP file" also takes a plain URL from a text variable, which is
+  then downloaded as is, like the native HTTP step does. Don't fill it with a URL an end user typed
+  unless you check that URL first.
 - **Compression methods:** Stored and Deflate, which is what practically every ZIP tool writes.
 
 ### Differences from the ActionsJS step

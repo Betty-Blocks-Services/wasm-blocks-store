@@ -100,29 +100,56 @@ fn run(
         &mut budget,
     ))?;
 
+    // Extract everything first: a broken archive, a ZIP bomb or too many files then stores nothing.
+    let files = archive::extract_files(bytes, MAX_TOTAL_BYTES)?;
+
     let mut references = Vec::new();
-    archive::for_each_file(bytes, MAX_TOTAL_BYTES, |name, content| {
+    let mut stored: Vec<&str> = Vec::new();
+    for (name, content) in &files {
         let result = upload_file::upload(
             &helper_context,
             &upload_file::Input {
                 model: model_target.clone(),
                 property: target.clone(),
-                file_base64: STANDARD.encode(&content),
-                full_filename: name.to_string(),
+                file_base64: STANDARD.encode(content),
+                full_filename: name.clone(),
             },
         )
         .map_err(|error| {
-            upload_error(
+            let message = upload_error(
                 &format!("\"{name}\""),
                 &error,
                 "Property to save the extracted files into",
                 "check that \"Property to save the extracted files into\" is a file property of \"Model to save the extracted files into\"",
-            )
+            );
+            format!("{message}. {}", already_stored(&stored, files.len()))
         })?;
         references.push(Value::String(result.reference));
-        Ok(())
-    })?;
+        stored.push(name);
+    }
     Ok(Value::Array(references).to_string())
+}
+
+/// Which files a failed run had already uploaded. The upload interface cannot remove them, and as
+/// the step returns no references they are in no record: uploads nothing points to.
+fn already_stored(stored: &[&str], total: usize) -> String {
+    if stored.is_empty() {
+        return format!("None of the {total} files was uploaded");
+    }
+    const SHOWN: usize = 10;
+    let mut names = stored
+        .iter()
+        .take(SHOWN)
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if stored.len() > SHOWN {
+        names.push_str(&format!(" and {} more", stored.len() - SHOWN));
+    }
+    format!(
+        "{} of the {total} files were already uploaded ({names}); they are not saved in any record, and running the step again uploads them again",
+        stored.len()
+    )
 }
 
 struct Unzip;
@@ -148,6 +175,18 @@ mod tests {
         assert_eq!(zip_url(value).unwrap(), "https://x/a.zip?sig=1");
         assert_eq!(zip_url(r#""https://x/a.zip""#).unwrap(), "https://x/a.zip");
         assert_eq!(zip_url(" https://x/a.zip ").unwrap(), "https://x/a.zip");
+    }
+
+    #[test]
+    fn a_failed_upload_names_the_files_already_uploaded() {
+        assert_eq!(already_stored(&[], 3), "None of the 3 files was uploaded");
+        assert_eq!(
+            already_stored(&["a.txt", "b.txt"], 3),
+            "2 of the 3 files were already uploaded (\"a.txt\", \"b.txt\"); they are not saved in any record, and running the step again uploads them again"
+        );
+        let names: Vec<String> = (0..12).map(|n| format!("{n}.txt")).collect();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        assert!(already_stored(&names, 20).contains("\"9.txt\" and 2 more"));
     }
 
     #[test]

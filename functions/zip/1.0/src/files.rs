@@ -4,6 +4,10 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
+/// The most files one ZIP may hold. Every file is its own download, so this keeps a single run
+/// bounded; not a measured platform limit. The same number as UNZIP's.
+pub const MAX_FILES: usize = 1000;
+
 #[derive(Debug, PartialEq)]
 pub struct FileToZip {
     /// The name inside the archive, made unique (`a.pdf`, `a_1.pdf`, ...).
@@ -138,6 +142,11 @@ pub fn files_in_records(records: &[String], property: &str) -> Result<Vec<FileTo
             .map(str::to_string)
             .or_else(|| name_from_url(url))
             .unwrap_or_default();
+        if files.len() == MAX_FILES {
+            return Err(format!(
+                "the collection has more than {MAX_FILES} files, the most this step puts in one ZIP — split the collection, for example with a filter or a limit"
+            ));
+        }
         files.push(FileToZip {
             entry_name: unique_name(&clean_name(&name), &mut taken),
             url: url.to_string(),
@@ -249,6 +258,18 @@ mod tests {
         let long = format!(r#"{{"other":"{}"}}"#, "é".repeat(300));
         let error = records_in_collection(&long).unwrap_err();
         assert!(error.ends_with("..."), "error was: {error}");
+    }
+
+    #[test]
+    fn the_file_limit_counts_only_records_with_a_file() {
+        let with_file = record(serde_json::json!({"file": {"url": "https://x/a"}}));
+        let without_file = record(serde_json::json!({"file": null}));
+        let mut records = vec![without_file; 5];
+        records.extend(std::iter::repeat_n(with_file.clone(), MAX_FILES));
+        assert_eq!(files_in_records(&records, "file").unwrap().len(), MAX_FILES);
+        records.push(with_file);
+        let error = files_in_records(&records, "file").unwrap_err();
+        assert!(error.contains("more than 1000 files"), "error was: {error}");
     }
 
     #[test]
