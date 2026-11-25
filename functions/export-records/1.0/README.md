@@ -4,8 +4,10 @@ Exports the records of a model to a CSV or Excel (XLSX) file, stores the file th
 `betty-blocks-types:upload-file@4.0.0` interface and returns the file reference. A Rust port of the
 ActionsJS step `export-to-csv` 3.4 (Betty-Blocks-Services/rob-block-store-functions).
 
-**Status:** built for `wasm32-wasip2`, unit-tested (`cargo test -p export-records`) and run
-successfully on a canvas (2026-11-24). The points under "Not tested yet" are still open.
+**Status:** built for `wasm32-wasip2`, unit- and component-tested (`cargo test -p export-records`)
+and run successfully on a canvas (2026-11-24). The **Escape formulas** option and the paging fix
+came after that canvas run (review of PR #21) and have not been run on a canvas yet. The points
+under "Not tested yet" are still open.
 
 > **After configuring:** add a Create Record or Update Record step on the model chosen as
 > "Model to save file into" and put the result (`As`) in the file property chosen as "Property to
@@ -27,21 +29,29 @@ successfully on a canvas (2026-11-24). The points under "Not tested yet" are sti
 | Property mapping | KEY = column header, VALUE = database name (`created_at`) or `relation.property` for a belongs-to relation. Columns follow the order of the map |
 | Format mapping for export columns | KEY = column header, VALUE = `Date\|<format>` (also `Datetime\|` and `Time\|`), or `Decimal\|<separator>` / `Price\|<separator>` |
 | Use BOM | CSV only; default on |
+| Escape formulas | CSV only; default on. Puts a `'` in front of text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet program shows it as text instead of running it as a formula (CSV injection). Column headers are escaped the same way. A sign followed by only digits, spaces, `.` and `,` (and maybe a closing `%`) is left alone: `-12,5`, `+31 6 1234 5678`, `-5%`. Other text that starts with a sign does get the `'`, e.g. `- none -` |
 | As | The file reference (Text) |
 
 ## Behaviour
 
-- **All matching records are exported**, fetched 200 per request (the Data API's page size) until
-  `totalCount` is reached. Every page is one request towards the Data API rate limit.
+- **All matching records are exported**, asked for 200 per request until `totalCount` is reached.
+  A page with fewer records does not end the export (the Data API may cap pages lower); only reaching
+  `totalCount` does. If a page comes back empty before that, the step fails rather than storing an
+  incomplete file. Every page is one request towards the Data API rate limit.
 - **The records are always sorted**, by `id` when no sort property is chosen, so paging cannot export a
   record twice or skip one. With a sort property that is not unique this can still happen, as in the
-  ActionsJS step.
+  ActionsJS step. The step sends one sort field; whether the Data API accepts a second one as a
+  tie-breaker has not been checked. The option's info asks for a property with unique values.
 - **CSV** is written like the `export-to-csv` 0.2 package the ActionsJS step used: `\r\n` after every
   line (the last one too), text in double quotes with `"` doubled, `TRUE`/`FALSE` for yes/no values,
   numbers without quotes, and an empty value as `""`.
 - **XLSX** has one sheet, named after the model to save the file into (as in the ActionsJS step;
   invalid characters are removed and the name is cut to 31 characters). Numbers are number cells,
-  yes/no values boolean cells, text is text, and empty values leave the cell empty.
+  yes/no values boolean cells, text is text, and empty values leave the cell empty. Integers beyond
+  2^53, which an Excel number would round, are written as text with all their digits. A sheet holds at
+  most 1,048,575 records: when `totalCount` is higher the step fails after the first page, before
+  fetching the rest. Text over 32,767 characters (Excel's cell limit) fails the step and names the
+  column and record.
 - **Filter variables** are filled in like the `data-api-query` step (same template code and the same
   value check): inside quotes any text is safe; outside quotes only a number, `true`/`false`, a name or
   a comma-separated list of those; `{{{name}}}` is raw and unchecked. The filter must have balanced
@@ -56,7 +66,30 @@ successfully on a canvas (2026-11-24). The points under "Not tested yet" are sti
 - **No records** gives a file with only the header row. The ActionsJS step failed with "The generated
   query did not give any results."
 - **Datetimes are formatted in UTC.** The ActionsJS step used the server's time zone.
-- **`Time|<format>`** works on time values (`13:45:00`). The ActionsJS step listed it but ignored it.
+- **`Datetime|<format>` and `Time|<format>`** are formatted like `Date|`. The ActionsJS step only
+  handled `Date|` and exported the value unformatted for the other two.
+- **Only the date-fns letters `y M d E Q H h m s S a` are supported.** The ActionsJS step passed the
+  pattern to date-fns 2, which also knows `do`, `w`, `L`, `e`, `k`, `K`, `G` and more: a pattern such as
+  `MMMM do, yyyy` worked there and fails the step here (with a message listing the supported letters).
+  `aaa` gives `am`/`pm` and `a`/`aa` give `AM`/`PM`, as in date-fns.
+- **`Date|dd|MM`** uses `dd|MM` as the pattern (a `|` after the first one is part of it). The ActionsJS
+  step used only the part between the first and the second `|`.
+- **A mistake in the Format mapping fails the step** before any record is fetched: a key that is not a
+  column of the Property mapping, a value that is not text, a value without `|`, an unknown kind
+  (`Dates|`) or an empty format. The ActionsJS step ignored all of these and exported the value
+  unformatted. None of these cases is kept lenient. The format is trimmed, so `Date| dd-MM-yyyy` adds no
+  space.
+- **Filename:** spaces around the name are removed and an empty name becomes `export`. The ActionsJS
+  step used the name as given (an empty option gave the file name `undefined`).
+- **Empty values in XLSX are blank cells.** The ActionsJS step wrote them as empty text (`''` through
+  SheetJS), which `ISBLANK` and `COUNTA` treat differently.
+- **CSV text that could run as a formula** gets a `'` in front by default (option Escape formulas).
+  The ActionsJS step wrote it as it was.
+- **`Decimal|` and `Price|` only change numbers** and text that is a number. The ActionsJS step
+  replaced the first `.` in any value, so `v1.2-beta` became `v1,2-beta`.
+- **A blank row in the Format mapping** (no key and no value) is skipped.
+- **Incomplete exports fail.** A Data API response without results, or a page that comes back empty
+  before `totalCount` is reached, fails the step. The ActionsJS step could write a short file.
 - **A has-many relation or object** in a column is written as JSON instead of `[object Object]`.
 - **A header that holds the delimiter, a quote or a line break** is quoted, so it cannot break the file.
 - **A property path with other characters than letters, digits and `_`** fails the step instead of
@@ -76,11 +109,15 @@ Run on a canvas, but not checked separately:
   in the order they were entered. The step reads the keys in the order of the JSON text and also accepts
   a list of `{ "key", "value" }`;
 - the format of **datetime values** from the Data API (offsets are converted to UTC);
-- the largest export that fits: the whole file is built in memory and sent to the upload as base64.
+- the largest export that fits: the records, the file and its base64 are all held in memory, so a large
+  export can run out of memory. There is no cap yet because no limit has been measured; run a large
+  export on a real app and put the result here (or add a cap) before relying on it for big models.
 
 ## Tests
 
-`cargo test -p export-records` runs the unit tests. `src/template.rs` and `src/graphql.rs` are
+`cargo test -p export-records` runs the unit tests and `tests/mod.rs`, which runs the built
+component (`just build` first; needs Rust 1.94+ for wasmtime) with a mocked Data API that caps pages
+at 100 records and a mocked upload-file. `src/template.rs` and `src/graphql.rs` are
 copies of the files with the same name in `data-api-request` (and `data-api-query`), and
 `tests/templayed_cases.json` is the same fixture. The value check in `src/filter.rs` is a copy of the
 one in `data-api-query/1.0/src/query.rs`. When one copy changes, change the others too.

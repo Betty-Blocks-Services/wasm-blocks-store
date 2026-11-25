@@ -1,4 +1,5 @@
-//! A copy of this file is in `data-api-query/1.0/src/graphql.rs`: change both.
+//! Copies of this file are in `data-api-query/1.0/src/graphql.rs` and
+//! `export-records/1.0/src/graphql.rs`: change all three.
 //!
 //! Just enough GraphQL lexing to check the text a developer typed or a variable filled in: which
 //! characters are code (not inside a string or a comment), whether the brackets pair up, and which

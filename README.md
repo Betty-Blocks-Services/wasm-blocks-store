@@ -116,4 +116,11 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+One export step, ported from the ActionsJS Export to CSV step and run on a canvas of a test app:
+
+- `functions/export-records/1.0/` — exports the records of a model (filter with `{{variables}}`,
+  sorting, a column mapping and date/decimal formats) to a CSV or Excel file and returns the file
+  reference to store with a Create or Update step. See its README for the options and the
+  differences from the ActionsJS step.
+
 See `docs/developer-learnings-log.md` for the full history.

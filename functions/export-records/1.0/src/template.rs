@@ -304,11 +304,12 @@ mod tests {
         assert!(error.contains("longer than 64 KB"), "{error}");
     }
 
-    /// The expected output of the original templayed.js (see tests/generate_templayed_cases.mjs).
+    /// The expected output of the original templayed.js (see
+    /// data-api-request/1.0/tests/generate_templayed_cases.mjs, which regenerates the fixture).
     #[test]
     fn matches_the_original_templayed_js() {
-        // Update this when tests/generate_templayed_cases.mjs gets more cases, so a regenerated
-        // file that quietly lost cases does not pass.
+        // Update this when data-api-request/1.0/tests/generate_templayed_cases.mjs gets more
+        // cases, so a regenerated file that quietly lost cases does not pass.
         const EXPECTED_CASES: usize = 15;
         const EXPECTED_SKIPPED: usize = 2;
 

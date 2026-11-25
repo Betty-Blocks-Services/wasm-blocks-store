@@ -40,6 +40,8 @@ pub struct Params<'a> {
     pub mapping: &'a [(String, Value)],
     pub formats: &'a [(String, Value)],
     pub bom: bool,
+    /// Put a `'` in front of CSV text that could be read as a formula.
+    pub escape_formulas: bool,
 }
 
 /// The query for one page.
@@ -60,12 +62,15 @@ pub fn build_query(params: &Params, skip: usize) -> Result<(String, String), Str
     // Pages are separate requests: without a sort order a record could be exported twice or not
     // at all, so the records are sorted by id when no sort property is chosen.
     let sort_field = match params.sort_field.map(str::trim).filter(|f| !f.is_empty()) {
+        // Checked before the conversion, like the mapping paths: `snake_to_camel` would turn
+        // `name } x` into the harmless-looking `nameX`.
         Some(field) => {
-            let field = mapping::snake_to_camel(field);
-            if !mapping::is_name(&field) {
-                return Err(format!("The sort property \"{field}\" is not valid"));
+            if !mapping::is_name(field) {
+                return Err(format!(
+                    "The sort property \"{field}\" is not valid: use a property name with only letters, digits and _"
+                ));
             }
-            field
+            mapping::snake_to_camel(field)
         }
         None => String::from("id"),
     };
@@ -101,7 +106,9 @@ fn host_error_message(raw: &str) -> String {
         .unwrap_or_else(|| raw.to_string())
 }
 
-/// The records of one page and the total count.
+/// The records of one page and the total count. A missing or `null` node or `results` is an
+/// error, not an empty page: it would otherwise give a header-only or cut-off file without a
+/// word. A real empty result is `results: []` with `totalCount: 0`.
 fn read_page(response: &str, field: &str) -> Result<(Vec<Value>, Option<u64>), String> {
     let mut parsed: Value = serde_json::from_str(response)
         .map_err(|error| format!("The Data API response is not valid JSON: {error}"))?;
@@ -111,52 +118,126 @@ fn read_page(response: &str, field: &str) -> Result<(Vec<Value>, Option<u64>), S
     let node = parsed
         .get_mut("data")
         .and_then(|data| data.get_mut(field))
-        .ok_or_else(|| format!("The Data API response has no data for `{field}`"))?;
+        .filter(|node| node.is_object())
+        .ok_or_else(|| {
+            format!(
+                "The Data API returned no data for `{field}`: check the model and its permissions"
+            )
+        })?;
     let total = node.get("totalCount").and_then(Value::as_u64);
     let records = match node.get_mut("results").map(Value::take) {
         Some(Value::Array(records)) => records,
-        Some(Value::Null) | None => Vec::new(),
-        Some(_) => return Err(String::from("The Data API results are not a list")),
+        Some(Value::Null) | None => {
+            return Err(format!(
+                "The Data API returned no results list for `{field}`"
+            ));
+        }
+        Some(_) => return Err(format!("The Data API results for `{field}` are not a list")),
     };
     Ok((records, total))
 }
 
-/// Fetches every matching record with `send`, a page of `PAGE_SIZE` at a time.
+/// The most rows below the header an Excel sheet holds.
+pub const XLSX_MAX_ROWS: u64 = 1_048_575;
+
+/// Fetches every matching record with `send`, a page at a time.
+///
+/// It keeps asking until it has `totalCount` records or a page comes back empty, so a Data API
+/// that returns fewer than `PAGE_SIZE` records per page does not cut the export short. When the
+/// last page is empty while `totalCount` says more records exist, the step fails instead of
+/// writing an incomplete file. Only when the response has no `totalCount` does a page with fewer
+/// than `PAGE_SIZE` records end the export.
 pub fn fetch_all(
     params: &Params,
     mut send: impl FnMut(&str) -> Result<String, String>,
 ) -> Result<Vec<Value>, String> {
+    validate(params)?;
     let mut records = Vec::new();
     loop {
         let (query, field) = build_query(params, records.len())?;
         let response = send(&query).map_err(|error| host_error_message(&error))?;
         let (page, total) = read_page(&response, &field)?;
-        let full = page.len() == PAGE_SIZE;
+        if let Some(total) = total
+            && params.file_type == FileType::Xlsx
+            && total > XLSX_MAX_ROWS
+        {
+            return Err(format!(
+                "{total} records match, more than an Excel sheet holds (at most 1,048,575): \
+                 narrow the filter or export to CSV"
+            ));
+        }
+        let received = page.len();
         records.extend(page);
-        let done = total.is_some_and(|total| records.len() as u64 >= total);
-        if !full || done {
-            return Ok(records);
+        let fetched = records.len() as u64;
+        match total {
+            Some(total) if fetched >= total => return Ok(records),
+            Some(total) if received == 0 => {
+                return Err(format!(
+                    "The Data API stopped returning records after {fetched} of {total}: \
+                     the export is incomplete"
+                ));
+            }
+            Some(_) => {}
+            None if received < PAGE_SIZE => return Ok(records),
+            None => {}
         }
     }
+}
+
+/// The format of each column, in column order. A Format mapping key that is no column header, or
+/// a value that is not text, is a configuration mistake and fails the step.
+fn column_formats(
+    specs: &[(String, Value)],
+    columns: &[Column],
+) -> Result<Vec<Option<Format>>, String> {
+    // A blank row left in the Map option (no key, no value) is not a mistake: skip it.
+    let blank = |(key, value): &&(String, Value)| {
+        key.trim().is_empty()
+            && match value {
+                Value::Null => true,
+                Value::String(text) => text.trim().is_empty(),
+                _ => false,
+            }
+    };
+    let specs: Vec<&(String, Value)> = specs.iter().filter(|entry| !blank(entry)).collect();
+    for (key, _) in &specs {
+        if !columns.iter().any(|column| column.header == *key) {
+            let headers: Vec<&str> = columns.iter().map(|c| c.header.as_str()).collect();
+            return Err(format!(
+                "The Format mapping has the column \"{key}\", which is not a column of the Property mapping. Use one of its keys (the column names): {}",
+                headers.join(", ")
+            ));
+        }
+    }
+    columns
+        .iter()
+        .map(|column| {
+            match specs.iter().find(|(key, _)| *key == column.header) {
+                None => Ok(None),
+                Some((_, Value::String(spec))) => format::parse(&column.header, spec).map(Some),
+                Some((_, other)) => Err(format!(
+                    "The format of the column \"{}\" must be text like Date|dd-MM-yyyy, not {other}",
+                    column.header
+                )),
+            }
+        })
+        .collect()
+}
+
+/// Checks the options that do not need the Data API (the model, filter, sort, mapping and
+/// formats), so a configuration mistake fails before the first request.
+pub fn validate(params: &Params) -> Result<(), String> {
+    build_query(params, 0)?;
+    let columns = mapping::columns(params.mapping)?;
+    column_formats(params.formats, &columns)?;
+    Ok(())
 }
 
 /// The file's bytes: the header row, then one row per record with the formats applied.
 pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String> {
     let columns: Vec<Column> = mapping::columns(params.mapping)?;
     let headers: Vec<String> = columns.iter().map(|c| c.header.clone()).collect();
-
-    let mut formats: Vec<Option<Format>> = Vec::with_capacity(columns.len());
-    for column in &columns {
-        let spec = params
-            .formats
-            .iter()
-            .find(|(key, _)| *key == column.header)
-            .and_then(|(_, value)| value.as_str());
-        formats.push(match spec {
-            Some(spec) => format::parse(&column.header, spec)?,
-            None => None,
-        });
-    }
+    let formats = column_formats(params.formats, &columns)?;
 
     let mut rows = Vec::with_capacity(records.len());
     for record in records {
@@ -177,7 +258,14 @@ pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String>
             } else {
                 params.delimiter
             };
-            Ok(cell::csv(&headers, &rows, delimiter, params.bom).into_bytes())
+            Ok(cell::csv(
+                &headers,
+                &rows,
+                delimiter,
+                params.bom,
+                params.escape_formulas,
+            )
+            .into_bytes())
         }
         FileType::Xlsx => cell::xlsx(&headers, &rows, params.sheet),
     }
@@ -222,6 +310,7 @@ mod tests {
             mapping,
             formats,
             bom: false,
+            escape_formulas: true,
         }
     }
 
@@ -299,6 +388,186 @@ mod tests {
         })
         .unwrap();
         assert_eq!((records.len(), calls), (PAGE_SIZE, 1));
+    }
+
+    fn skip_of(query: &str) -> usize {
+        query
+            .split("skip: ")
+            .nth(1)
+            .unwrap()
+            .split(',')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_data_api_that_caps_pages_lower_still_gives_every_record() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut skips = Vec::new();
+        let records = fetch_all(&params(&mapping, &[], &variables), |query| {
+            let skip = skip_of(query);
+            skips.push(skip);
+            let count = (250 - skip).min(100);
+            Ok(page(
+                (skip..skip + count).map(|id| json!({"id": id})).collect(),
+                250,
+            ))
+        })
+        .unwrap();
+        assert_eq!(records.len(), 250);
+        assert_eq!(skips, [0, 100, 200]);
+    }
+
+    #[test]
+    fn an_empty_page_before_the_total_fails_the_step() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let error = fetch_all(&params(&mapping, &[], &variables), |query| {
+            let skip = skip_of(query);
+            let count = if skip == 0 { 100 } else { 0 };
+            Ok(page((0..count).map(|id| json!({"id": id})).collect(), 300))
+        })
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "The Data API stopped returning records after 100 of 300: the export is incomplete"
+        );
+    }
+
+    #[test]
+    fn without_a_total_count_a_short_page_ends_the_export() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut calls = 0;
+        let records = fetch_all(&params(&mapping, &[], &variables), |query| {
+            calls += 1;
+            let skip = skip_of(query);
+            let count = if skip == 0 { PAGE_SIZE } else { 5 };
+            let results: Vec<Value> = (0..count).map(|id| json!({"id": id})).collect();
+            Ok(json!({"data": {"allPerson": {"results": results}}}).to_string())
+        })
+        .unwrap();
+        assert_eq!((records.len(), calls), (PAGE_SIZE + 5, 2));
+    }
+
+    #[test]
+    fn too_many_records_for_excel_fail_before_fetching_them_all() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut p = params(&mapping, &[], &variables);
+        p.file_type = FileType::Xlsx;
+        let mut calls = 0;
+        let error = fetch_all(&p, |_| {
+            calls += 1;
+            Ok(page(vec![json!({"id": 1})], 2_000_000))
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert!(error.starts_with("2000000 records match"), "{error}");
+    }
+
+    #[test]
+    fn a_null_or_missing_node_or_results_is_an_error() {
+        for response in [
+            r#"{"data": {"allPerson": null}}"#,
+            r#"{"data": {"allPerson": {}}}"#,
+            r#"{"data": {"allPerson": {"results": null, "totalCount": 3}}}"#,
+            r#"{"data": {}}"#,
+            r#"{"data": null}"#,
+            r#"{}"#,
+        ] {
+            assert!(read_page(response, "allPerson").is_err(), "{response}");
+        }
+        assert_eq!(
+            read_page(r#"{"data": {"allPerson": {"results": 5}}}"#, "allPerson").unwrap_err(),
+            "The Data API results for `allPerson` are not a list"
+        );
+        assert!(
+            read_page("not json", "allPerson")
+                .unwrap_err()
+                .starts_with("The Data API response is not valid JSON")
+        );
+    }
+
+    #[test]
+    fn an_empty_errors_list_is_not_an_error() {
+        let response =
+            r#"{"errors": [], "data": {"allPerson": {"results": [{"id": 1}], "totalCount": 1}}}"#;
+        assert_eq!(
+            read_page(response, "allPerson").unwrap(),
+            (vec![json!({"id": 1})], Some(1))
+        );
+    }
+
+    #[test]
+    fn invalid_model_sort_order_or_sort_property_is_an_error() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut p = params(&mapping, &[], &variables);
+        p.model = "Person { x }";
+        assert_eq!(
+            build_query(&p, 0).unwrap_err(),
+            "Select the model to export records from"
+        );
+        let mut p = params(&mapping, &[], &variables);
+        p.sort_order = "UP";
+        assert!(
+            build_query(&p, 0)
+                .unwrap_err()
+                .starts_with("Unknown sort order")
+        );
+        let mut p = params(&mapping, &[], &variables);
+        p.sort_field = Some("name } x");
+        assert!(
+            build_query(&p, 0)
+                .unwrap_err()
+                .starts_with("The sort property")
+        );
+    }
+
+    #[test]
+    fn a_bad_format_fails_before_the_first_request() {
+        let mapping = parse_map(r#"{"Born": "birth_date"}"#, "M").unwrap();
+        let variables = json!({});
+        for (formats, expected) in [
+            (r#"{"Born": "Date|DD-MM-YYYY"}"#, "uses \"D\""),
+            (
+                r#"{"born": "Date|dd-MM-yyyy"}"#,
+                "not a column of the Property mapping",
+            ),
+            (r#"{"Born": 5}"#, "must be text"),
+            (r#"{"Born": null}"#, "must be text"),
+            (r#"{"Born": "Date:dd"}"#, "has no |"),
+            (r#"{"Born": "Dates|dd"}"#, "unknown kind"),
+            (r#"{"Born": "Date|"}"#, "empty after the |"),
+            (r#"{"": "Date|dd"}"#, "not a column of the Property mapping"),
+        ] {
+            let formats = parse_map(formats, "F").unwrap();
+            let mut calls = 0;
+            let error = fetch_all(&params(&mapping, &formats, &variables), |_| {
+                calls += 1;
+                Ok(page(vec![], 0))
+            })
+            .unwrap_err();
+            assert_eq!(calls, 0, "{error}");
+            assert!(error.contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_blank_format_mapping_row_is_skipped() {
+        let mapping = parse_map(r#"{"Born": "birth_date"}"#, "M").unwrap();
+        let formats = parse_map(r#"{"Born": "Date|dd-MM-yyyy", "": "", " ": null}"#, "F").unwrap();
+        let variables = json!({});
+        let p = params(&mapping, &formats, &variables);
+        let records = vec![json!({"birthDate": "1990-05-17"})];
+        assert_eq!(
+            String::from_utf8(write_file(&p, &records).unwrap()).unwrap(),
+            "Born\r\n\"17-05-1990\"\r\n"
+        );
     }
 
     #[test]

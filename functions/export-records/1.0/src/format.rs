@@ -2,8 +2,9 @@
 //! (also `Price|,`).
 //!
 //! The ActionsJS step formatted dates with date-fns 2. This is the date-fns format syntax for the
-//! tokens a file export needs; any other letter is an error instead of being printed, as in
-//! date-fns. Datetimes are formatted in UTC (the ActionsJS step used the server's time zone).
+//! tokens a file export needs (y, M, d, E, Q, H, h, m, s, S, a); any other letter is an error
+//! instead of being formatted, so a pattern that worked in the ActionsJS step (e.g. with `do`)
+//! can fail here. Datetimes are formatted in UTC (the ActionsJS step used the server's time zone).
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use serde_json::Value;
@@ -23,20 +24,30 @@ pub enum Token {
     Field(char, usize),
 }
 
-/// Parses one Format mapping value. `None` when the value has no `|` or an unknown kind, which
-/// the ActionsJS step also ignored (the value is then exported unformatted).
-pub fn parse(column: &str, spec: &str) -> Result<Option<Format>, String> {
+const FORMAT_HELP: &str = "use Date|<format> (also Datetime| and Time|), e.g. Date|dd-MM-yyyy, or Decimal|<separator> (also Price|), e.g. Decimal|,";
+
+/// Parses one Format mapping value. A value without `|`, with an unknown kind or with an empty
+/// format is a configuration mistake and fails the step (the ActionsJS step ignored it and
+/// exported the value unformatted). The format is trimmed, so `Date| dd-MM-yyyy` adds no space.
+pub fn parse(column: &str, spec: &str) -> Result<Format, String> {
     let Some((kind, pattern)) = spec.split_once('|') else {
-        return Ok(None);
+        return Err(format!(
+            "The format \"{spec}\" of the column \"{column}\" has no |: {FORMAT_HELP}"
+        ));
     };
-    match kind.trim().to_lowercase().as_str() {
-        "date" | "datetime" | "time" if !pattern.is_empty() => {
-            Ok(Some(Format::Date(tokenize(column, pattern)?)))
-        }
-        "decimal" | "price" if !pattern.trim().is_empty() => {
-            Ok(Some(Format::Decimal(pattern.trim().to_string())))
-        }
-        _ => Ok(None),
+    let pattern = pattern.trim();
+    let kind = kind.trim();
+    if pattern.is_empty() {
+        return Err(format!(
+            "The format \"{spec}\" of the column \"{column}\" is empty after the |: {FORMAT_HELP}"
+        ));
+    }
+    match kind.to_lowercase().as_str() {
+        "date" | "datetime" | "time" => Ok(Format::Date(tokenize(column, pattern)?)),
+        "decimal" | "price" => Ok(Format::Decimal(pattern.to_string())),
+        _ => Err(format!(
+            "The format \"{spec}\" of the column \"{column}\" has the unknown kind \"{kind}\": {FORMAT_HELP}"
+        )),
     }
 }
 
@@ -203,7 +214,9 @@ fn format_moment(column: &str, text: &str, tokens: &[Token]) -> Result<String, S
                 if count == 2 {
                     padded(year.rem_euclid(100), 2)
                 } else {
-                    padded(year, count)
+                    // Bounded like d and H: a very long run of y would otherwise ask for a
+                    // padding width the formatter cannot handle.
+                    padded(year, count.min(9))
                 }
             }
             'M' => {
@@ -254,7 +267,8 @@ fn format_moment(column: &str, text: &str, tokens: &[Token]) -> Result<String, S
             'a' => {
                 let pm = time.hour() >= 12;
                 match count {
-                    1..=3 => (if pm { "PM" } else { "AM" }).to_string(),
+                    1 | 2 => (if pm { "PM" } else { "AM" }).to_string(),
+                    3 => (if pm { "pm" } else { "am" }).to_string(),
                     4 => (if pm { "p.m." } else { "a.m." }).to_string(),
                     _ => (if pm { "p" } else { "a" }).to_string(),
                 }
@@ -277,7 +291,11 @@ pub fn apply(column: &str, value: &Value, format: Option<&Format>) -> Result<Val
     match format {
         None => Ok(value.clone()),
         Some(Format::Date(tokens)) => Ok(Value::String(format_moment(column, &text, tokens)?)),
-        Some(Format::Decimal(separator)) => Ok(Value::String(text.replacen('.', separator, 1))),
+        // Only a number, or text that is one, gets the separator: `v1.2-beta` stays as it is.
+        Some(Format::Decimal(separator)) if text.trim().parse::<f64>().is_ok() => {
+            Ok(Value::String(text.replacen('.', separator, 1)))
+        }
+        Some(Format::Decimal(_)) => Ok(value.clone()),
     }
 }
 
@@ -287,7 +305,7 @@ mod tests {
     use serde_json::json;
 
     fn date(pattern: &str, value: &str) -> Result<String, String> {
-        let format = parse("C", &format!("Date|{pattern}"))?.unwrap();
+        let format = parse("C", &format!("Date|{pattern}"))?;
         apply("C", &json!(value), Some(&format)).map(|v| v.as_str().unwrap().to_string())
     }
 
@@ -349,7 +367,7 @@ mod tests {
 
     #[test]
     fn decimal_replaces_the_first_point() {
-        let format = parse("C", "Decimal|,").unwrap().unwrap();
+        let format = parse("C", "Decimal|,").unwrap();
         assert_eq!(
             apply("C", &json!(12.5), Some(&format)).unwrap(),
             json!("12,5")
@@ -359,20 +377,93 @@ mod tests {
             json!("3,25")
         );
         assert_eq!(apply("C", &json!(7), Some(&format)).unwrap(), json!("7"));
-        let price = parse("C", "price| , ").unwrap().unwrap();
+        let price = parse("C", "price| , ").unwrap();
         assert_eq!(price, Format::Decimal(",".into()));
     }
 
     #[test]
-    fn unknown_or_incomplete_formats_are_ignored() {
-        assert_eq!(parse("C", "Date").unwrap(), None);
-        assert_eq!(parse("C", "Date|").unwrap(), None);
-        assert_eq!(parse("C", "Upper|x").unwrap(), None);
+    fn unknown_or_incomplete_formats_are_errors_that_name_the_column() {
+        let error = parse("Born", "Date:dd-MM-yyyy").unwrap_err();
+        assert!(
+            error.starts_with("The format \"Date:dd-MM-yyyy\" of the column \"Born\" has no |"),
+            "{error}"
+        );
+        assert!(
+            parse("Born", "Date|")
+                .unwrap_err()
+                .contains("is empty after the |")
+        );
+        assert!(
+            parse("Born", "Date|  ")
+                .unwrap_err()
+                .contains("is empty after the |")
+        );
+        assert!(
+            parse("Born", "Dates|dd-MM-yyyy")
+                .unwrap_err()
+                .contains("the unknown kind \"Dates\"")
+        );
+    }
+
+    #[test]
+    fn the_date_format_is_trimmed() {
+        assert_eq!(date(" dd-MM-yyyy ", "2024-03-07").unwrap(), "07-03-2024");
+    }
+
+    #[test]
+    fn datetime_and_time_kinds_format_like_date() {
+        let datetime = parse("C", "Datetime|dd-MM-yyyy HH:mm").unwrap();
+        assert_eq!(
+            apply("C", &json!("2024-03-07T14:05:09Z"), Some(&datetime)).unwrap(),
+            json!("07-03-2024 14:05")
+        );
+        let time = parse("C", "Time|hh:mm a").unwrap();
+        assert_eq!(
+            apply("C", &json!("09:30:00"), Some(&time)).unwrap(),
+            json!("09:30 AM")
+        );
+    }
+
+    #[test]
+    fn more_tokens_format_like_date_fns() {
+        assert_eq!(date("yy", "1999-03-07").unwrap(), "99");
+        assert_eq!(date("S SS", "2024-03-07T13:05:00.256Z").unwrap(), "2 25");
+        assert_eq!(date("hh a", "2024-03-07T12:00:00Z").unwrap(), "12 PM");
+        assert_eq!(date("hh a", "2024-03-07T00:00:00Z").unwrap(), "12 AM");
+        assert_eq!(date("h aaa", "2024-03-07T15:00:00Z").unwrap(), "3 pm");
+        assert_eq!(date("h aaaa", "2024-03-07T15:00:00Z").unwrap(), "3 p.m.");
+        assert_eq!(date("h aaaaa", "2024-03-07T03:00:00Z").unwrap(), "3 a");
+    }
+
+    #[test]
+    fn a_very_long_year_token_does_not_panic() {
+        let pattern = "y".repeat(65_536);
+        assert_eq!(date(&pattern, "2024-03-07").unwrap(), "000002024");
+    }
+
+    #[test]
+    fn decimal_leaves_text_that_is_not_a_number_alone() {
+        let format = parse("C", "Decimal|,").unwrap();
+        for text in ["v1.2-beta", "a.b@x.com"] {
+            assert_eq!(
+                apply("C", &json!(text), Some(&format)).unwrap(),
+                json!(text)
+            );
+        }
+    }
+
+    #[test]
+    fn decimal_replaces_only_the_first_point() {
+        let format = parse("C", "Decimal|,").unwrap();
+        assert_eq!(
+            apply("C", &json!("1234.5"), Some(&format)).unwrap(),
+            json!("1234,5")
+        );
     }
 
     #[test]
     fn booleans_and_objects_are_not_formatted() {
-        let format = parse("C", "Decimal|,").unwrap().unwrap();
+        let format = parse("C", "Decimal|,").unwrap();
         assert_eq!(
             apply("C", &json!(true), Some(&format)).unwrap(),
             json!(true)

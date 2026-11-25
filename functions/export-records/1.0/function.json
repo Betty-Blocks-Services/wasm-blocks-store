@@ -66,7 +66,7 @@
       },
       "name": "property-sort",
       "label": "Sort property",
-      "info": "The property to sort the records by. Leave empty to sort by id."
+      "info": "The property to sort the records by. Leave empty to sort by id. Use a property with unique values: records are fetched in pages, so ties can make a record appear twice or not at all."
     },
     {
       "meta": {
@@ -161,7 +161,7 @@
       },
       "name": "format-property-mapping",
       "label": "Format mapping for export columns",
-      "info": "KEY = column name (as in Property mapping), VALUE = Date|<format>, e.g. Date|dd-MM-yyyy (date-fns tokens, also for Datetime and Time), or Decimal|, / Price|, to set the decimal separator."
+      "info": "KEY = column name (as in Property mapping), VALUE = Date|<format> (also Datetime|, Time|), e.g. Date|dd-MM-yyyy with the letters y M d E Q H h m s S a, or Decimal|, / Price|, for the decimal separator."
     },
     {
       "meta": {
@@ -171,6 +171,15 @@
       "name": "use-bom",
       "label": "Use BOM",
       "info": "Add a BOM character at the start of a CSV file, so Excel reads it as UTF-8. Not used for Excel files."
+    },
+    {
+      "meta": {
+        "type": "Boolean",
+        "default": true
+      },
+      "name": "escape-formulas",
+      "label": "Escape formulas",
+      "info": "Put a ' in front of CSV text that starts with =, +, -, @ or a tab, so Excel shows it as text instead of running it as a formula. Numbers are left alone. Not used for Excel files."
     },
     {
       "meta": {

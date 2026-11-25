@@ -45,6 +45,7 @@ impl Guest for ExportRecords {
         export_property_mapping: JsonString,
         format_property_mapping: JsonString,
         use_bom: Option<bool>,
+        escape_formulas: Option<bool>,
     ) -> Result<String, String> {
         let file_type = match file_type {
             WitFileType::Csv => FileType::Csv,
@@ -85,6 +86,7 @@ impl Guest for ExportRecords {
             mapping: &mapping,
             formats: &formats,
             bom: use_bom.unwrap_or(true),
+            escape_formulas: escape_formulas.unwrap_or(true),
         };
 
         let records = export::fetch_all(&params, |query| request(&helper_context, query, "{}"))?;
@@ -114,11 +116,46 @@ fn parse_variables(text: &str) -> Result<serde_json::Value, String> {
     match serde_json::from_str::<serde_json::Value>(text) {
         Ok(serde_json::Value::Null) => Ok(serde_json::json!({})),
         Ok(object @ serde_json::Value::Object(_)) => Ok(object),
-        Ok(_) => Err(String::from(
-            "The Variables in filter must be a map of names to values",
+        Ok(other) => Err(format!(
+            "The Variables in filter must be a map of names to values (KEY = VALUE rows), not {}",
+            mapping::json_kind(&other)
         )),
         Err(error) => Err(format!(
             "The Variables in filter are not valid JSON ({error})"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_variables;
+    use serde_json::json;
+
+    #[test]
+    fn empty_and_null_variables_are_an_empty_map() {
+        assert_eq!(parse_variables("").unwrap(), json!({}));
+        assert_eq!(parse_variables("  ").unwrap(), json!({}));
+        assert_eq!(parse_variables("null").unwrap(), json!({}));
+    }
+
+    #[test]
+    fn a_map_is_used_as_it_is() {
+        assert_eq!(
+            parse_variables(r#"{"type": "x", "n": 2}"#).unwrap(),
+            json!({"type": "x", "n": 2})
+        );
+    }
+
+    #[test]
+    fn other_json_or_invalid_json_is_an_error() {
+        assert_eq!(
+            parse_variables("[1, 2]").unwrap_err(),
+            "The Variables in filter must be a map of names to values (KEY = VALUE rows), not a list"
+        );
+        assert!(
+            parse_variables("{nope")
+                .unwrap_err()
+                .starts_with("The Variables in filter are not valid JSON")
+        );
     }
 }

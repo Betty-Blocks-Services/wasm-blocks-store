@@ -8,6 +8,20 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## A Select option can feed a WIT `enum` parameter, and `upload-file@4.0.0` is live (2026-11-24)
+
+**Fact:** `export-records` 1.0 has three Select options (`file-type`, `sort-order`, `delimiter`) whose WIT parameters are `enum`s, with each Select `value` equal to an enum case name (`csv`, `ASC`, `semicolon`). Published with `bb functions publish` and run on a canvas, the step accepted the chosen values as enum cases: the platform maps a Select value onto the enum case with the same name, the same way the native HTTP step's `betty-http-method` enum works. The same run stored its file through `betty-blocks-types:upload-file/upload-file@4.0.0` (the step's only upload import), so `@4.0.0` is live on the platform, not only at `wasm-base-components` HEAD.
+
+**How found:** Rob, 2026-11-24, canvas run of `export-records` 1.0 (PR #21) on a test app.
+
+**Why it matters:** an enum is a better WIT type for a Select than `string`: the component no longer has to reject unknown text, and `bb functions validate`/`just step-lint` can check the values. A case name must be kebab-case words (each all lowercase or all UPPERCASE, so `ASC` is valid) and cannot be a symbol, so a delimiter needs names like `comma`, not `,`. For new steps that upload a file, pin `upload-file@4.0.0` (with `data-api@3.0.0`/`types@3.0.0`); this answers the 2026-10-07 drift entry below. Belongs in the crash course's option-types section.
+
+**Not tested:** not every value of the three Selects was tried in the run; whether the My BB function.json editor (see the next entry) accepts a Select on an `enum` parameter.
+
+**Status:** confirmed for the values used in that canvas run.
+
+---
+
 ## My BB's function.json editor refuses to change a WIT `string` option to a Select, which `bb functions publish` accepts (2026-11-20)
 
 **Fact:** My BB now has a `function.json` editor for an uploaded Wasm step. After uploading `export-to-csv` 1.0 in the IDE (its options were generated from the WIT, so `file-type: string` became a Text option), changing that option in the editor to `"type": "Select"` with values `csv`/`xlsx` was refused: `Option "file-type" can not change from Text to Select, the component does not accept that`.

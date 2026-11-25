@@ -48,6 +48,7 @@ interface export-records {
         export-property-mapping: json-string,
         format-property-mapping: json-string,
         use-bom: option<bool>,
+        escape-formulas: option<bool>,
     ) -> result<string, string>;
 }
 

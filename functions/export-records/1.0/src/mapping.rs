@@ -21,7 +21,28 @@ pub fn parse_map(text: &str, label: &str) -> Result<Vec<(String, Value)>, String
         .deserialize_any(EntriesVisitor)
         .and_then(|entries| deserializer.end().map(|()| entries))
         .map_err(|error| format!("{label} is not valid JSON ({error})"))?;
-    entries.ok_or_else(|| format!("{label} must be a map of keys to values"))
+    entries.ok_or_else(|| {
+        // The kind of JSON, not the text itself: the option may hold values that should not end
+        // up in the log.
+        let kind = serde_json::from_str::<Value>(text)
+            .map(|value| json_kind(&value))
+            .unwrap_or("something else");
+        format!(
+            "{label} must be a map of keys to values (KEY = VALUE rows in the option), not {kind}"
+        )
+    })
+}
+
+/// What kind of JSON a value is, for an error message that should not repeat the value.
+pub fn json_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "empty",
+        Value::Bool(_) => "a yes/no value",
+        Value::Number(_) => "a number",
+        Value::String(_) => "text",
+        Value::Array(_) => "a list",
+        Value::Object(_) => "a map",
+    }
 }
 
 struct EntriesVisitor;
