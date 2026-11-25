@@ -8,7 +8,8 @@ ActionsJS UNZIP step 1.0 (`Betty-Blocks-Services/zip-unzip-action-function`). Th
 > Create Record or Update Record step on "Model to save the extracted files into", in "Property to
 > save the extracted files into". This step does not store the references in records.
 
-**Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested
+**Status:** published with `bb functions publish` and run on a canvas of a test app. Re-published
+and run on the canvas again on 2026-11-25, after the review changes (extract-then-upload order, entry cap, name cleaning, `Content-Length` check). Also tested
 locally: unit tests, and tests through a real component instance
 with a mocked download and a mocked upload, including an archive made by the system's `zip` (kept as
 a fixture in `tests/fixtures/`).

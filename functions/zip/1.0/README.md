@@ -8,7 +8,8 @@ ActionsJS ZIP step 1.1 (`Betty-Blocks-Services/zip-unzip-action-function`). The 
 > put the result (`As`) in "Property to save file into". This step does not store the reference in
 > a record.
 
-**Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested
+**Status:** published with `bb functions publish` and run on a canvas of a test app. Re-published
+and run on the canvas again on 2026-11-25, after the review changes (shared download budget with the `Content-Length` check, file and name checks). Also tested
 locally: unit tests, and tests through a real component instance
 with mocked downloads and a mocked upload (the archive also opens with the system's `unzip`).
 
