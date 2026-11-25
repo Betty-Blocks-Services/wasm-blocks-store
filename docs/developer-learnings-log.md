@@ -10,29 +10,33 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ## A file stored through `upload-file` is limited by the target file property's maximum file size; too large fails with S3 `EntityTooLarge` (2026-11-24)
 
-**Fact:** storing a 14,618,555-byte ZIP through `betty-blocks-types:upload-file/upload-file@4.0.0` failed with `upload failed with status 400:` followed by an S3 error document: `<Code>EntityTooLarge</Code>`, `<ProposedSize>14618555</ProposedSize>`, `<MaxSizeAllowed>10485760</MaxSizeAllowed>`. The 10,485,760 bytes (10 MiB) was the **maximum file size set on the target file property** in the data model. After Rob raised that setting to 25 MB, the same run stored the ZIP. So the limit is per property, not a fixed `upload-file` limit, and the S3 error carries both sizes.
+**Fact:** storing a 14,618,555-byte ZIP through `betty-blocks-types:upload-file/upload-file@4.0.0` failed with `upload failed with status 400:` followed by an S3 error document: `<Code>EntityTooLarge</Code>`, `<ProposedSize>14618555</ProposedSize>`, `<MaxSizeAllowed>10485760</MaxSizeAllowed>`. The 10,485,760 bytes (10 MiB) was the **maximum file size set on the target file property** in the data model. After that setting was raised to 25 MB, the same run stored the ZIP. So the limit is per property, not a fixed `upload-file` limit, and the S3 error carries both sizes.
 
-**How found:** Rob's canvas runs of the `zip` step, 2026-11-24. The same runs confirmed that a `Value` option with `allowedKinds: ["COLLECTION"]` and `allowLazyCollection: false` reaches a `json-string` parameter as JSON the step can parse, and that a `Property` option whose `"model"` points at that Value option still offers the collection's properties.
+**How found:** canvas runs of the `zip` step, 2026-11-24. The same runs confirmed that a `Value` option with `allowedKinds: ["COLLECTION"]` and `allowLazyCollection: false` reaches a `json-string` parameter as JSON the step can parse, and that a `Property` option whose `"model"` points at that Value option still offers the collection's properties.
 
-**Why it matters:** a step that stores files should not hard-code a size limit; it should turn `EntityTooLarge` into a message that names the property and both sizes (`zip` and `unzip` parse `ProposedSize`/`MaxSizeAllowed`). Secondhand, from Rob, not verified: 25 MB is the most the data model allows for a file property, and Betty Blocks staff can raise it (up to 1024 MB) through Control Panel / Synapse. Belongs in the crash course next to the `upload-file` notes.
+**Why it matters:** a step that stores files should not hard-code a size limit; it should turn `EntityTooLarge` into a message that names the property and both sizes (`zip` and `unzip` parse `ProposedSize`/`MaxSizeAllowed`). Secondhand, not verified: 25 MB is the most the data model allows for a file property, and Betty Blocks staff can raise it (up to 1024 MB) through Control Panel / Synapse.
+
+**Where this lands:** the crash course, next to the `upload-file` notes; the `zip` and `unzip` READMEs already state it.
 
 **Status:** confirmed on a canvas, 2026-11-24. The 25 MB / 1024 MB maximums: unverified.
 
 ---
 
-## A Wasm step cannot take a Collection option generically: its records arrive as objects (2026-11-24)
+## A Collection option did not reach a Wasm step in three attempts with these WIT shapes; its records arrive as objects (2026-11-24)
 
-**Fact:** the `zip` step, with a Collection option mapped to a WIT parameter `collection: betty-collection` (`types@3.0.0`: `record betty-collection { model: betty-model, data: option<list<betty-record-json>> }`), failed on a canvas when the action ran: `{"extensions":{"runtime":"wasmcloud","statusCode":400,"type":"ACTION RUN ERROR"},"message":"v10_0 is undefined"}`. The step's own code never ran.
+**Fact:** the `zip` step, with a Collection option mapped to a WIT parameter `collection: betty-collection` (`types@3.0.0`: `record betty-collection { model: betty-model, data: option<list<betty-record-json>> }`), failed on a canvas when the action ran: `{"extensions":{"runtime":"wasmcloud","statusCode":400,"type":"ACTION RUN ERROR"},"message":"v10_0 is undefined"}`. The step's own code most likely never ran: none of its own errors appeared (an inference, not seen in a log).
 
-**How found:** Rob's first canvas run of `zip`, 2026-11-24. The reading of the message is an inference: `vN_M` names are what generated JavaScript glue code (jco style) uses when it destructures field `M` of record argument `N` to pass it into the component. "v10_0 is undefined" fits destructuring a record whose first field is itself a record and is missing. In this step that can only be `collection.model`, so the platform passed the collection without a `model` field. Not checked against the platform's actual glue code.
+**How found:** the first canvas run of `zip`, 2026-11-24. The reading of the message is an inference: `vN_M` names are what generated JavaScript glue code (jco style) uses when it destructures field `M` of record argument `N` to pass it into the component. "v10_0 is undefined" fits destructuring a record whose first field is itself a record and is missing. In this step that is likely `collection.model`, so the platform probably passed the collection without a `model` field. Unverified: not checked against the platform's actual glue code.
 
 **Why it matters:** don't type a Collection option as `betty-collection` at the top level. The native send-mail step does use `betty-collection`, but inside its one `input` record, which the platform may build differently. More generally, an error like `vN_M is undefined` means the platform's value for a parameter does not match its WIT record type.
 
 **Update, same day:** typed as a `json-string` instead, the step failed the same way before it ran, with `"message": "expected a string"`. So the platform passes a Collection option as an object, and a top-level string parameter cannot take it. The next attempt is a record with only `data: option<list<string>>`, plus `"allowLazyCollection": false` on the option (the step had no such setting, so the default `true` may have passed an unloaded collection).
 
-**Update 2, same day:** with a record of only `data: option<list<string>>` and `"allowLazyCollection": false`, it still failed with `expected a string`. Rob then looked at the collection's data on the canvas: `data` is a list of record **objects** (`{"id": 1, "createdAt": "...", "file": {"name": "...", "url": "<signed asset URL>"}, ...}`), not JSON strings. A WIT `list<string>` cannot take those, and WIT has no type for an object of arbitrary shape. So **a Wasm step cannot take a Collection option generically**: only a record type with that one model's exact fields could receive it. The next attempt keeps a collection picker but makes it a `Value` option with `allowedKinds: ["COLLECTION"]`: Value options do arrive as JSON text (see the next entry), so the step can parse the records itself. The fallback is reading records through the Data API (Model + Filter options, as `data-api-request` does).
+**Update 2, same day:** with a record of only `data: option<list<string>>` and `"allowLazyCollection": false`, it still failed with `expected a string`. The collection's data, looked at on the canvas, showed that `data` is a list of record **objects** (`{"id": 1, "createdAt": "...", "file": {"name": "...", "url": "<signed asset URL>"}, ...}`), not JSON strings. A WIT `list<string>` cannot take those, and WIT has no type for an object of arbitrary shape. So, likely, **a Wasm step cannot take a Collection option generically**: only a record type with that one model's exact fields could receive it. This is inferred from these three attempts and the error messages, not from the platform's code. The next attempt keeps a collection picker but makes it a `Value` option with `allowedKinds: ["COLLECTION"]`: Value options do arrive as JSON text (see "How a Collection option and a file reach a Wasm step", two entries below), so the step can parse the records itself. The fallback is reading records through the Data API (Model + Filter options, as `data-api-request` does).
 
-**Status:** confirmed on a canvas, 2026-11-24. The `Value` option route works (see the file-size entry above). Open: how the native send-mail step's `attachments-col: option<betty-collection>` receives its records.
+**Where this lands:** the crash course's option-types section; the `zip` README explains why its collection is a `Value` option.
+
+**Status:** the three failures were seen on a canvas, 2026-11-24; why they failed is likely, not verified. The `Value` option route works (see the file-size entry above). Open: how the native send-mail step's `attachments-col: option<betty-collection>` receives its records.
 
 ---
 
@@ -42,7 +46,9 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 **How found:** the first end-to-end tests of the `zip`/`unzip` steps on 2026-11-24 all failed with `downloading "..." failed: connection reset`; reading the body in the handler made all of them pass, with no other change.
 
-**Why it matters:** `exchange-code-for-tokens/1.0/tests/mod.rs` says a mocked `wasi:http` call hit `StreamError::Closed` with `waki` and was left as a known gap. That looks like the same cause (not re-tested with `waki`). Belongs in the crash course's testing section, next to the 2026-10-02 entry on the `http` feature.
+**Why it matters:** `exchange-code-for-tokens/1.0/tests/mod.rs` says a mocked `wasi:http` call hit `StreamError::Closed` with `waki` and was left as a known gap. That looks like the same cause (not re-tested with `waki`).
+
+**Where this lands:** the crash course's testing section, next to the 2026-10-02 entry on the `http` feature.
 
 **Status:** confirmed locally with `wstd` 0.6.8, 2026-11-24. The `waki` case: open.
 
@@ -54,9 +60,11 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 **How found:** reading `bettyblocks/native-wasm-components` and `wasm-base-components` (shallow clones, 2026-11-24) to build the `zip`/`unzip` steps.
 
-**Why it matters:** this is the pattern for any step that reads files: no host import is needed to download, and `upload-file@4.0.0` stores the result. Belongs in the crash course's option-types section once confirmed on a canvas.
+**Why it matters:** this is the pattern for any step that reads files: no host import is needed to download, and `upload-file@4.0.0` stores the result.
 
-**Update, confirmed on a canvas on 2026-11-24 (Rob):** `unzip` works. So a `Value` option with `allowedKinds: ["FILE"]` reaches a WIT `json-string` parameter as JSON text (the platform serializes the file object), a component that imports `wasi:http@0.2.12` (from `wstd` 0.6.8) is accepted, and downloading a signed asset URL and storing files through `upload-file@4.0.0` work. The Collection part of this entry was wrong for a top-level parameter: see the entry above.
+**Update, confirmed on a canvas on 2026-11-24:** `unzip` works. So a `Value` option with `allowedKinds: ["FILE"]` reaches a WIT `json-string` parameter as JSON text (the platform serializes the file object), a component that imports `wasi:http@0.2.12` (from `wstd` 0.6.8) is accepted, and downloading a signed asset URL and storing files through `upload-file@4.0.0` work. The Collection part of this entry was wrong for a top-level parameter: see "A Collection option did not reach a Wasm step in three attempts", two entries above.
+
+**Where this lands:** the crash course's option-types section (the `Value` option and file pattern), and `docs/wasco-dev.md` (`wasi:http@0.2.12` confirmed live).
 
 **Status:** Value and file handling confirmed on a canvas; how send-mail's `betty-collection` receives records: open.
 

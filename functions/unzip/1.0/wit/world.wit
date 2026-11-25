@@ -5,8 +5,8 @@ interface unzip {
     use betty-blocks-types:types/types@3.0.0.{betty-model, betty-property};
 
     // A Value option arrives as JSON (the native steps type it `betty-value = json-string`). A
-    // named alias, not a bare `string`, for the result too: the platform JSON-parses it, which is
-    // how the native init-array step returns an Array output.
+    // named alias, not a bare `string`, for the result too, as the native init-array step returns
+    // its Array output (read from its source; the platform is expected to JSON-parse it).
     type json-string = string;
 
     // Parameter names match the option names in function.json one-to-one (bb functions validate

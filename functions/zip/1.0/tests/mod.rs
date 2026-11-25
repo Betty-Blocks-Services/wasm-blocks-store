@@ -32,8 +32,12 @@ fn property(name: &str) -> Vec<BettyProperty> {
     }]
 }
 
-/// Serves `/<name>` with the bytes of that file, and 404 for anything else.
-fn serve(files: Vec<(&'static str, Vec<u8>)>) -> wasmtime_testing_helper::http::HttpHandler {
+/// Serves `/<name>` with the bytes of that file, and 404 for anything else. With
+/// `claimed_length`, every file is sent with that `Content-Length` header instead of its own.
+fn serve(
+    files: Vec<(&'static str, Vec<u8>)>,
+    claimed_length: Option<u64>,
+) -> wasmtime_testing_helper::http::HttpHandler {
     Box::new(move |request, _config| {
         let path = request.uri().path().trim_start_matches('/').to_string();
         let found = files
@@ -44,7 +48,13 @@ fn serve(files: Vec<(&'static str, Vec<u8>)>) -> wasmtime_testing_helper::http::
             // Read the request body first, as a real server would; the client waits for that.
             request.into_body().await?;
             Ok(match found {
-                Some(bytes) => hyper::Response::new(hyper::body::Bytes::from(bytes)),
+                Some(bytes) => {
+                    let mut response = hyper::Response::builder();
+                    if let Some(length) = claimed_length {
+                        response = response.header("content-length", length);
+                    }
+                    response.body(hyper::body::Bytes::from(bytes)).unwrap()
+                }
                 None => hyper::Response::builder()
                     .status(404)
                     .body(hyper::body::Bytes::new())
@@ -60,10 +70,19 @@ fn run_zip(
     files: Vec<(&'static str, Vec<u8>)>,
     file_name: Option<&str>,
 ) -> (Result<String, String>, Vec<Input>) {
+    run_zip_with(records, files, file_name, None)
+}
+
+fn run_zip_with(
+    records: Vec<serde_json::Value>,
+    files: Vec<(&'static str, Vec<u8>)>,
+    file_name: Option<&str>,
+    claimed_length: Option<u64>,
+) -> (Result<String, String>, Vec<Input>) {
     let uploads = Arc::new(Mutex::new(Vec::new()));
     let captured = uploads.clone();
     let mut harness = bindings::harness();
-    harness.mock_http_handler(serve(files));
+    harness.mock_http_handler(serve(files, claimed_length));
     harness.mock(
         UPLOAD,
         "upload",
@@ -150,15 +169,41 @@ fn zips_the_files_of_a_collection_and_uploads_the_archive() {
 }
 
 #[test]
+fn entries_have_the_fixed_date_and_permissions() {
+    let (_, uploads) = run_zip(
+        vec![serde_json::json!({ "id": 1, "file": file("a.txt", "a") })],
+        vec![("a", b"hello".to_vec())],
+        None,
+    );
+    let bytes = STANDARD.decode(&uploads[0].file_base64).unwrap();
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let entry = archive.by_index(0).unwrap();
+    let date = entry.last_modified().unwrap();
+    assert_eq!((date.year(), date.month(), date.day()), (1980, 1, 1));
+    assert_eq!(entry.unix_mode().map(|mode| mode & 0o777), Some(0o644));
+    assert_eq!(entry.compression(), zip::CompressionMethod::Deflated);
+}
+
+/// Removes the directory when dropped, also when the test fails halfway.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
 fn the_archive_opens_with_the_system_unzip() {
     let (_, uploads) = run_zip(
         vec![serde_json::json!({ "id": 1, "file": file("a.txt", "a") })],
         vec![("a", b"hello".to_vec())],
         None,
     );
-    let directory = std::env::temp_dir().join(format!("zip-step-test-{}", std::process::id()));
-    std::fs::create_dir_all(&directory).unwrap();
-    let archive = directory.join("archive.zip");
+    let directory =
+        TempDir(std::env::temp_dir().join(format!("zip-step-test-{}", std::process::id())));
+    std::fs::create_dir_all(&directory.0).unwrap();
+    let archive = directory.0.join("archive.zip");
     std::fs::write(&archive, STANDARD.decode(&uploads[0].file_base64).unwrap()).unwrap();
     let output = std::process::Command::new("unzip")
         .args(["-p"])
@@ -166,7 +211,6 @@ fn the_archive_opens_with_the_system_unzip() {
         .arg("a.txt")
         .output()
         .expect("the `unzip` command must be installed to run this test");
-    std::fs::remove_dir_all(&directory).unwrap();
     assert!(output.status.success(), "unzip failed");
     assert_eq!(output.stdout, b"hello");
     assert_eq!(uploads[0].full_filename, "zip.zip");
@@ -194,4 +238,91 @@ fn a_wrong_property_is_an_error() {
     let error = result.unwrap_err();
     assert!(error.contains("no property \"file\""), "error was: {error}");
     assert!(uploads.is_empty());
+}
+
+#[test]
+fn records_without_any_file_are_an_error_and_nothing_is_uploaded() {
+    let (result, uploads) = run_zip(
+        vec![
+            serde_json::json!({ "id": 1, "file": null }),
+            serde_json::json!({ "id": 2, "file": null }),
+        ],
+        vec![],
+        None,
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.contains("0 of 2 records had a file in \"file\""),
+        "error was: {error}"
+    );
+    assert!(uploads.is_empty());
+}
+
+#[test]
+fn a_file_value_that_is_text_is_an_error_and_nothing_is_uploaded() {
+    let (result, uploads) = run_zip(
+        vec![serde_json::json!({ "id": 1, "file": "https://assets.example/a" })],
+        vec![("a", b"hello".to_vec())],
+        None,
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.contains("\"file\" in record 1 is not a file with a URL"),
+        "error was: {error}"
+    );
+    assert!(uploads.is_empty());
+}
+
+#[test]
+fn an_empty_collection_uploads_an_empty_zip() {
+    let (result, uploads) = run_zip(vec![], vec![], Some("nothing"));
+    assert_eq!(result.unwrap(), "reference-1");
+    assert_eq!(uploads.len(), 1);
+    assert_eq!(uploads[0].full_filename, "nothing.zip");
+    assert!(entries(&uploads[0]).is_empty());
+}
+
+#[test]
+fn the_size_limit_counts_all_downloads_together() {
+    // Each file is under the 64 MiB limit; together they are over it.
+    let size = 33 * 1024 * 1024;
+    let (result, uploads) = run_zip(
+        vec![
+            serde_json::json!({ "id": 1, "file": file("a.bin", "a") }),
+            serde_json::json!({ "id": 2, "file": file("b.bin", "b") }),
+        ],
+        vec![("a", vec![1; size]), ("b", vec![2; size])],
+        None,
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.contains("goes over") && error.contains("https://assets.example/b\""),
+        "error was: {error}"
+    );
+    assert!(uploads.is_empty());
+}
+
+#[test]
+fn a_content_length_over_the_limit_is_refused_before_reading() {
+    // The header claims more than the limit while the body is 5 bytes: only the Content-Length
+    // check can fail this run.
+    let (result, uploads) = run_zip_with(
+        vec![serde_json::json!({ "id": 1, "file": file("a.txt", "a") })],
+        vec![("a", b"hello".to_vec())],
+        None,
+        Some(64 * 1024 * 1024 + 1),
+    );
+    let error = result.unwrap_err();
+    assert!(error.contains("(67108865 bytes)"), "error was: {error}");
+    assert!(uploads.is_empty());
+}
+
+#[test]
+fn the_name_option_cannot_point_into_folders() {
+    let (_, uploads) = run_zip(
+        vec![serde_json::json!({ "id": 1, "file": file("a.txt", "a") })],
+        vec![("a", b"hello".to_vec())],
+        Some("../../x"),
+    );
+    assert_eq!(uploads[0].full_filename, "x.zip");
 }

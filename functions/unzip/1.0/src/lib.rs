@@ -7,6 +7,7 @@ mod bindings {
 
 mod archive;
 mod download;
+mod names;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::Value;
@@ -175,6 +176,29 @@ mod tests {
         assert_eq!(zip_url(value).unwrap(), "https://x/a.zip?sig=1");
         assert_eq!(zip_url(r#""https://x/a.zip""#).unwrap(), "https://x/a.zip");
         assert_eq!(zip_url(" https://x/a.zip ").unwrap(), "https://x/a.zip");
+    }
+
+    #[test]
+    fn a_size_refusal_is_explained_with_the_sizes() {
+        let storage = "upload failed with status 400: <?xml version=\"1.0\"?><Error><Code>EntityTooLarge</Code><ProposedSize>14618555</ProposedSize><MaxSizeAllowed>10485760</MaxSizeAllowed></Error>";
+        assert_eq!(
+            upload_error("\"a.pdf\"", storage, "P", "hint"),
+            "storing \"a.pdf\" failed: it is larger than the maximum file size of \"P\" (13.9 MB while it accepts 10.0 MB) — raise that property's maximum file size in the data model, or use smaller files"
+        );
+        let without_sizes = upload_error("x", "<Code>EntityTooLarge</Code>", "P", "hint");
+        assert!(without_sizes.contains("\"P\" — raise"), "{without_sizes}");
+        assert_eq!(
+            upload_error("x", "boom", "P", "hint"),
+            "storing x failed: boom — hint"
+        );
+    }
+
+    #[test]
+    fn xml_numbers_are_read_between_their_tags() {
+        assert_eq!(xml_number("<A> 12 </A>", "A"), Some(12));
+        assert_eq!(xml_number("<A>x</A>", "A"), None);
+        assert_eq!(xml_number("<B>1</B>", "A"), None);
+        assert_eq!(xml_number("<A>1", "A"), None);
     }
 
     #[test]

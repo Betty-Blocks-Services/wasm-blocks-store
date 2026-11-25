@@ -116,8 +116,8 @@ Platform facts reviewers should know (see `docs/developer-learnings-log.md`; poi
 entry instead of restating it): the Data API accepts a `take` of at most 200; a Record or
 Collection result without `id` breaks later steps; `json-string` binds as Record/Collection
 (`list<betty-record-json>` does not); the HTTP step inserts body variables without JSON escaping
-and the Data API step pastes its Filter into the query unchecked; `wasi:http@0.2.6` is the
-version confirmed live for outbound HTTP (others untested); a step failing on a canvas may simply
+and the Data API step pastes its Filter into the query unchecked; `wasi:http@0.2.6` and
+`@0.2.12` are the versions confirmed live for outbound HTTP (others untested); a step failing on a canvas may simply
 be in the wrong sandbox. Do **not** flag a missing secret mask on secret-like inputs (the platform
 Configuration feature handles that), or the world name `main` either way (that rule is doubtful).
 

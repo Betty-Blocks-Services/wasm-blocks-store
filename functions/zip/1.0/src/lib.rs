@@ -7,6 +7,7 @@ mod bindings {
 
 mod download;
 mod files;
+mod names;
 
 use std::io::{Cursor, Write};
 
@@ -20,7 +21,9 @@ use crate::bindings::betty_blocks_types::upload_file::upload_file;
 use crate::bindings::exports::betty_blocks::zip::zip::Guest;
 
 /// The most bytes this step downloads in one run, summed over all files. A guard against running
-/// out of memory (the files and the archive are all held in memory); not a measured platform limit.
+/// out of memory; not a measured platform limit. Files are downloaded one at a time, so memory
+/// holds the current download and the archive so far, and at the end the archive and its base64
+/// copy for the upload (about 2.3 times the archive).
 pub const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 
 /// A size in MB (of 1024 x 1024 bytes).
@@ -64,15 +67,19 @@ fn first_property(properties: Vec<BettyProperty>, label: &str) -> Result<BettyPr
         .ok_or_else(|| format!("\"{label}\" is empty — select a file property"))
 }
 
-/// The name the archive is stored under: the configured name (default `zip`) with `.zip` added
-/// unless it already ends in it.
+/// The name the archive is stored under: the configured name (default `zip`), cleaned like the
+/// names inside the archive (no folders, no control characters), with `.zip` added unless it
+/// already ends in it.
 fn archive_file_name(file_name: Option<&str>) -> String {
-    let name = file_name.map(str::trim).filter(|name| !name.is_empty());
-    let name = name.unwrap_or("zip");
+    let name = file_name.and_then(names::clean_file_name);
+    let name = name.as_deref().unwrap_or("zip");
     if name.to_ascii_lowercase().ends_with(".zip") {
         name.to_string()
     } else {
-        format!("{name}.zip")
+        format!(
+            "{}.zip",
+            names::shorten(name, names::MAX_NAME_BYTES - ".zip".len())
+        )
     }
 }
 
@@ -180,5 +187,11 @@ mod tests {
         assert_eq!(archive_file_name(Some("  ")), "zip.zip");
         assert_eq!(archive_file_name(Some("invoices")), "invoices.zip");
         assert_eq!(archive_file_name(Some("invoices.ZIP")), "invoices.ZIP");
+        assert_eq!(archive_file_name(Some("../../x")), "x.zip");
+        assert_eq!(archive_file_name(Some("a\\b\u{0}c")), "bc.zip");
+        assert_eq!(archive_file_name(Some("..")), "zip.zip");
+        let long = archive_file_name(Some(&"a".repeat(500)));
+        assert_eq!(long.len(), names::MAX_NAME_BYTES);
+        assert!(long.ends_with("a.zip"), "{long}");
     }
 }

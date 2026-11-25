@@ -4,48 +4,49 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
+use crate::names::{clean_file_name, unique_name};
+
 /// The most files one ZIP may hold. Every file is its own download, so this keeps a single run
 /// bounded; not a measured platform limit. The same number as UNZIP's.
 pub const MAX_FILES: usize = 1000;
 
 #[derive(Debug, PartialEq)]
 pub struct FileToZip {
-    /// The name inside the archive, made unique (`a.pdf`, `a_1.pdf`, ...).
+    /// The name inside the archive, made safe and unique (`a.pdf`, `a_1.pdf`, ...).
     pub entry_name: String,
     pub url: String,
 }
 
-/// The last path segment of a URL, without its query string, for a file that has no name.
+/// `text` with `%XX` escapes decoded, or `text` itself when the result is not UTF-8.
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let hex = bytes
+            .get(index + 1..index + 3)
+            .and_then(|hex| std::str::from_utf8(hex).ok())
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match (bytes[index], hex) {
+            (b'%', Some(byte)) => {
+                decoded.push(byte);
+                index += 3;
+            }
+            (byte, _) => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(decoded).unwrap_or_else(|_| text.to_string())
+}
+
+/// The last path segment of a URL, without its query string and percent-decoded, for a file that
+/// has no name.
 fn name_from_url(url: &str) -> Option<String> {
     let path = url.split(['?', '#']).next()?;
     let name = path.rsplit('/').next()?;
-    (!name.is_empty()).then(|| name.to_string())
-}
-
-/// Makes `name` usable as one archive entry: no folders, no empty name.
-fn clean_name(name: &str) -> String {
-    let name = name.rsplit(['/', '\\']).next().unwrap_or_default().trim();
-    if name.is_empty() || name == "." || name == ".." {
-        String::from("file")
-    } else {
-        name.to_string()
-    }
-}
-
-/// `name`, or `name_1`, `name_2`, ... before the extension, whichever is not taken yet. The same
-/// scheme as the ActionsJS ZIP step.
-fn unique_name(name: &str, taken: &mut HashSet<String>) -> String {
-    let mut candidate = name.to_string();
-    let mut count = 1;
-    while taken.contains(&candidate) {
-        candidate = match name.rfind('.') {
-            Some(dot) if dot > 0 => format!("{}_{count}{}", &name[..dot], &name[dot..]),
-            _ => format!("{name}_{count}"),
-        };
-        count += 1;
-    }
-    taken.insert(candidate.clone());
-    candidate
+    (!name.is_empty()).then(|| percent_decode(name))
 }
 
 /// The start of `text`, for an error message that shows what arrived.
@@ -61,9 +62,9 @@ fn preview(text: &str) -> String {
     }
 }
 
-/// The records of a Collection option, each as a JSON object in text. The value arrives as JSON:
-/// an object with a `data` list (what the ActionsJS step read), or a bare list. A record may be an
-/// object or a JSON string holding one.
+/// The records of the collection, each as a JSON object in text. The option is a Value option
+/// limited to collections, so the value arrives as JSON: an object with a `data` list (what the
+/// ActionsJS step read), or a bare list. A record may be an object or a JSON string holding one.
 pub fn records_in_collection(collection: &str) -> Result<Vec<String>, String> {
     let value: Value = serde_json::from_str(collection).map_err(|error| {
         format!(
@@ -109,19 +110,42 @@ pub fn records_in_collection(collection: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// Collects the file in `property` of every record. Records without a file (no value, or no URL)
-/// are skipped, as the ActionsJS step did.
+/// True for a value that means "no file": `null`, `{}`, or an object whose `url` and `name` are
+/// both missing, `null` or empty.
+fn is_no_file(value: &Value) -> bool {
+    let blank = |field: Option<&Value>| match field {
+        None | Some(Value::Null) => true,
+        Some(Value::String(text)) => text.is_empty(),
+        Some(_) => false,
+    };
+    match value {
+        Value::Null => true,
+        Value::Object(fields) => blank(fields.get("url")) && blank(fields.get("name")),
+        _ => false,
+    }
+}
+
+/// Collects the file in `property` of every record. Records without a file (see [`is_no_file`])
+/// are skipped. Fails when the property is missing from every record, when a value is not a file
+/// (an object with a `url`), and when the collection has records but none of them has a file: all
+/// three mean the step reads the wrong property. An empty collection gives no files.
 pub fn files_in_records(records: &[String], property: &str) -> Result<Vec<FileToZip>, String> {
     let mut files = Vec::new();
     let mut taken = HashSet::new();
     let mut property_seen = records.is_empty();
     let mut first_keys = None;
-    for record in records {
-        let record: Value = serde_json::from_str(record)
-            .map_err(|error| format!("a record in the collection is not valid JSON: {error}"))?;
+    for (index, record) in records.iter().enumerate() {
+        let number = index + 1;
+        let record: Value = serde_json::from_str(record).map_err(|error| {
+            format!(
+                "record {number} of the collection is not valid JSON ({error}); it starts with: {}",
+                preview(record)
+            )
+        })?;
         let Some(fields) = record.as_object() else {
             return Err(format!(
-                "a record in the collection is not a JSON object: {record}"
+                "record {number} of the collection is not a JSON object; it starts with: {}",
+                preview(&record.to_string())
             ));
         };
         if first_keys.is_none() {
@@ -131,24 +155,32 @@ pub fn files_in_records(records: &[String], property: &str) -> Result<Vec<FileTo
             continue;
         };
         property_seen = true;
-        let url = value.get("url").and_then(Value::as_str).unwrap_or_default();
-        if url.is_empty() {
+        if is_no_file(value) {
             continue;
         }
-        let name = value
-            .get("name")
+        let url = value
+            .get("url")
             .and_then(Value::as_str)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .or_else(|| name_from_url(url))
-            .unwrap_or_default();
+            .filter(|url| !url.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "the value of \"{property}\" in record {number} is not a file with a URL; it is: {} — check that \"Property to read files from\" is a file or image property",
+                    preview(&value.to_string())
+                )
+            })?;
         if files.len() == MAX_FILES {
             return Err(format!(
                 "the collection has more than {MAX_FILES} files, the most this step puts in one ZIP — split the collection, for example with a filter or a limit"
             ));
         }
+        let name = value
+            .get("name")
+            .and_then(Value::as_str)
+            .and_then(clean_file_name)
+            .or_else(|| name_from_url(url).as_deref().and_then(clean_file_name))
+            .unwrap_or_else(|| String::from("file"));
         files.push(FileToZip {
-            entry_name: unique_name(&clean_name(&name), &mut taken),
+            entry_name: unique_name(&name, &mut taken),
             url: url.to_string(),
         });
     }
@@ -156,6 +188,12 @@ pub fn files_in_records(records: &[String], property: &str) -> Result<Vec<FileTo
         return Err(format!(
             "the records in the collection have no property \"{property}\" (found: {}) — check that \"Property to read files from\" belongs to the model of the collection",
             first_keys.unwrap_or_default()
+        ));
+    }
+    if files.is_empty() && !records.is_empty() {
+        return Err(format!(
+            "0 of {} records had a file in \"{property}\", so there is nothing to zip — check that \"Property to read files from\" is the property that holds the files, and that the records have files",
+            records.len()
         ));
     }
     Ok(files)
@@ -177,7 +215,9 @@ mod tests {
             ),
             record(serde_json::json!({"id": 2, "file": null})),
             record(serde_json::json!({"id": 3, "file": {}})),
-            record(serde_json::json!({"id": 4, "file": {"url": "https://x/files/b.png?sig=2"}})),
+            record(serde_json::json!({"id": 4, "file": {"name": null, "url": null}})),
+            record(serde_json::json!({"id": 5, "file": {"url": "https://x/files/b.png?sig=2"}})),
+            record(serde_json::json!({"id": 6, "file": {"name": "../..", "url": "https://x/"}})),
         ];
         let files = files_in_records(&records, "file").unwrap();
         assert_eq!(
@@ -191,28 +231,48 @@ mod tests {
                     entry_name: "b.png".into(),
                     url: "https://x/files/b.png?sig=2".into()
                 },
+                FileToZip {
+                    entry_name: "file".into(),
+                    url: "https://x/".into()
+                },
             ]
         );
     }
 
     #[test]
-    fn duplicate_names_get_a_number_before_the_extension() {
-        let mut taken = HashSet::new();
-        assert_eq!(unique_name("a.pdf", &mut taken), "a.pdf");
-        assert_eq!(unique_name("a.pdf", &mut taken), "a_1.pdf");
-        assert_eq!(unique_name("a.pdf", &mut taken), "a_2.pdf");
-        assert_eq!(unique_name("README", &mut taken), "README");
-        assert_eq!(unique_name("README", &mut taken), "README_1");
-        assert_eq!(unique_name(".env", &mut taken), ".env");
-        assert_eq!(unique_name(".env", &mut taken), ".env_1");
+    fn a_name_from_the_url_is_percent_decoded() {
+        assert_eq!(
+            name_from_url("https://x/f/my%20report%28v2%29.pdf?sig=1").as_deref(),
+            Some("my report(v2).pdf")
+        );
+        assert_eq!(
+            name_from_url("https://x/100%25.txt").as_deref(),
+            Some("100%.txt")
+        );
+        assert_eq!(
+            name_from_url("https://x/50%.txt").as_deref(),
+            Some("50%.txt")
+        );
+        assert_eq!(
+            name_from_url("https://x/%FF.bin").as_deref(),
+            Some("%FF.bin")
+        );
+        let name = percent_decode("a%2Fb");
+        assert_eq!(clean_file_name(&name).as_deref(), Some("b"));
     }
 
     #[test]
-    fn folder_parts_are_removed_from_names() {
-        assert_eq!(clean_name("../../etc/passwd"), "passwd");
-        assert_eq!(clean_name("dir\\file.txt"), "file.txt");
-        assert_eq!(clean_name(".."), "file");
-        assert_eq!(clean_name(""), "file");
+    fn names_are_cleaned_and_made_unique() {
+        let records = [
+            record(serde_json::json!({"file": {"name": "dir/a.pdf", "url": "https://x/1"}})),
+            record(serde_json::json!({"file": {"name": "a\u{0}.pdf", "url": "https://x/2"}})),
+        ];
+        let names: Vec<String> = files_in_records(&records, "file")
+            .unwrap()
+            .into_iter()
+            .map(|file| file.entry_name)
+            .collect();
+        assert_eq!(names, ["a.pdf", "a_1.pdf"]);
     }
 
     #[test]
@@ -223,6 +283,58 @@ mod tests {
         let error = files_in_records(&records, "file").unwrap_err();
         assert!(error.contains("no property \"file\""), "error was: {error}");
         assert!(error.contains("document"), "error was: {error}");
+    }
+
+    #[test]
+    fn records_without_any_file_are_an_error() {
+        let records = [
+            record(serde_json::json!({"id": 1, "file": null})),
+            record(serde_json::json!({"id": 2, "file": {}})),
+        ];
+        let error = files_in_records(&records, "file").unwrap_err();
+        assert!(
+            error.contains("0 of 2 records had a file in \"file\""),
+            "error was: {error}"
+        );
+    }
+
+    #[test]
+    fn a_value_that_is_not_a_file_is_an_error() {
+        for value in [
+            serde_json::json!("https://x/a.pdf"),
+            serde_json::json!(5),
+            serde_json::json!({"name": "a.pdf"}),
+            serde_json::json!({"name": "a.pdf", "url": 5}),
+        ] {
+            let records = [
+                record(serde_json::json!({"file": {"name": "ok", "url": "https://x/ok"}})),
+                record(serde_json::json!({ "file": value })),
+            ];
+            let error = files_in_records(&records, "file").unwrap_err();
+            assert!(
+                error.contains("in record 2 is not a file with a URL"),
+                "for {value}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bad_record_is_named_and_shortened() {
+        let records = [
+            record(serde_json::json!({"file": null})),
+            serde_json::json!("x".repeat(5_000_000)).to_string(),
+        ];
+        let error = files_in_records(&records, "file").unwrap_err();
+        assert!(
+            error.starts_with("record 2 of the collection is not a JSON object"),
+            "{error}"
+        );
+        assert!(error.len() < 400, "error is {} bytes", error.len());
+        let error = files_in_records(&[String::from("{oops")], "file").unwrap_err();
+        assert!(
+            error.starts_with("record 1 of the collection is not valid JSON"),
+            "{error}"
+        );
     }
 
     #[test]

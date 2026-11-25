@@ -6,8 +6,9 @@ interface zip {
 
     // The collection comes from a Value option limited to collections. Value options arrive as
     // JSON text (UNZIP's file input proved this on a canvas), so the records can be read whatever
-    // the model's fields are. A Collection option does not work: it passes the records as objects,
-    // which no generic WIT type can take (see docs/developer-learnings-log.md, 2026-11-24).
+    // the model's fields are. A Collection option did not work in three attempts: it passes the
+    // records as objects, which no generic WIT type can take (see docs/developer-learnings-log.md,
+    // 2026-11-24).
     type json-string = string;
 
     // Parameter names match the option names in function.json one-to-one (bb functions validate
