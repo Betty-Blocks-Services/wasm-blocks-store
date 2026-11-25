@@ -8,6 +8,36 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## Step icon names: no published list, an unknown name silently shows a lightning icon; the colors are a fixed list of 8 (2026-11-24)
+
+**Fact:** the schema `bb functions validate` uses ([`bettyblocks/json-schema` `schemas/actions/function.json`](https://github.com/bettyblocks/json-schema/blob/master/schemas/actions/function.json), last changed 2026-11-16) fixes `icon.color` to `Yellow`, `Green`, `Pink`, `Orange`, `Purple`, `Blue`, `Teal`, `Grey`, but `icon.name` is any string ("defined by a set we have available in our framework"). The public `@betty-blocks/design` package (30.0.0) has 198 icon components, but it is not that set: 10 of the 18 names the official steps use (`UploadIcon`, `TrashIcon`, `ActionsIcon`, ...) are not in it.
+
+Icon names known to work, because an official step or a step in this repo uses them: `ActionsIcon`, `ArrayIcon`, `ArrowClockwiseIcon`, `AtIcon`, `BracketsCurly`, `CloudIcon`, `DataIcon`, `DataJumpUpIcon`, `ExpressionIcon`, `FileLogIcon`, `FileZIPIcon`, `FinishIcon`, `LockIcon`, `ObjectIcon`, `PlusIcon`, `PublicPageIcon`, `QuestionIcon`, `TextIcon`, `TrashIcon`, `UploadIcon`, `VariableIcon`.
+
+**How found:** read the schema and every `function.json` in `native-wasm-components` and `block-store-wasm-components`, and unpacked `@betty-blocks/design` from npm, on 2026-11-24.
+
+Also confirmed: the icon picker in the IDE's "Add custom Wasm step" upload flow offers 436 icons, so that picker is the practical list to choose from. `FileZIPIcon` (used by the ActionsJS ZIP/UNZIP steps in `Betty-Blocks-Services/zip-unzip-action-function`) renders for a Wasm step. `ZipIcon`, which is in `@betty-blocks/design`, does not: a published step with it shows a lightning icon instead. **So an unknown icon name is not rejected at publish; the step silently gets that fallback icon.**
+
+**Why it matters:** an icon name outside the known list passes validation and publishing, then shows a lightning icon. Check the icon in the step palette after publishing. Belongs in the crash course's `function.json` section.
+
+**Status:** the color list and the known-good names are confirmed from source; the 436 icons, `FileZIPIcon` rendering and the lightning fallback for `ZipIcon` were seen by Rob in the IDE on 2026-11-24: confirmed.
+
+---
+
+## `cargo test` here needs Rust 1.94 or newer, and clippy 1.94 rejects existing code in `data-api-query` (2026-11-24)
+
+**Fact:** the `Cargo.lock` on `main` resolves `wasmtime-testing-helper` to a wasmtime whose Cranelift crates (`cranelift-codegen` 0.133.3 and others) require rustc 1.94. With rustc 1.93, `cargo build --target wasm32-wasip2` still works (the components do not depend on wasmtime), but `just test` stops before compiling anything with `rustc 1.93.0 is not supported by the following packages`. With Rust 1.94.1, `just test` passes. `cargo clippy --all-targets -- -D warnings` (`just quality-check`) on 1.94.1 then fails on `functions/data-api-query/1.0/src/query.rs:188` ("this boolean expression can be simplified"), code that passed CI on 2026-10-24 with an older clippy.
+
+**How found:** building the `gzip`/`gunzip` steps on 2026-11-24 on a machine whose default toolchain was 1.93. Installed 1.94 next to it (`rustup toolchain install 1.94 --target wasm32-wasip2 -c clippy -c rustfmt`) and ran the checks with `RUSTUP_TOOLCHAIN=1.94`, without changing the default toolchain.
+
+**Correction (2026-11-25):** this entry first said CI hits the same clippy error on every PR. It does not: CI's `run-ci` installs the latest stable (rustc 1.100.0 on 2026-11-24), whose clippy does not report this lint, and `main` and the open PRs were green. The lint appears on clippy 1.94 only (the original line also passes clippy 1.97), so it only affects someone running `just quality-check` on a 1.94 toolchain.
+
+**Why it matters:** a local 1.94 toolchain, which `cargo test` needs at minimum, fails `just quality-check` on code CI accepts. Fixed in its own PR (#22): `!spans.get(next).is_some_and(|span| span.start <= *at)` became `spans.get(next).is_none_or(|span| span.start > *at)`, which means the same. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
+
+**Status:** confirmed locally on 2026-11-24; the CI claim corrected on 2026-11-25 from the `run-ci` log; the clippy error is fixed in #22: resolved.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:

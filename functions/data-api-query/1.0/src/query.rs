@@ -185,7 +185,7 @@ fn code_outside_values(rendered: &Rendered, hostile: impl Fn(usize) -> bool) -> 
             .filter(|(at, _)| {
                 // The spans are in order and do not overlap: look the one at `at` up by binary search.
                 let next = spans.partition_point(|span| span.end <= *at);
-                !spans.get(next).is_some_and(|span| span.start <= *at)
+                spans.get(next).is_none_or(|span| span.start > *at)
             })
             .map(|(_, character)| character)
             .collect(),

@@ -1,0 +1,59 @@
+{
+  "description": "Decompresses gzip data, the inverse of the GZIP step. Takes base64, returns UTF-8 text (or base64 for binary content).",
+  "label": "GUNZIP",
+  "category": "Misc",
+  "icon": {
+    "name": "FileZIPIcon",
+    "color": "Blue"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "data",
+      "label": "Data",
+      "info": "The gzip data to decompress, as a base64 string (it starts with H4sI). Standard base64; line breaks are ignored."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "utf8",
+        "values": [
+          {
+            "label": "UTF-8 text",
+            "value": "utf8"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "output-encoding",
+      "label": "Output encoding",
+      "info": "UTF-8 text: the decompressed data as text, e.g. XML. Base64: the decompressed bytes as base64, for binary content such as a PDF."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "The decompressed data, as text unless Output encoding says base64."
+    }
+  ],
+  "yields": "NONE"
+}
