@@ -65,28 +65,20 @@ fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     } else {
         Cow::Borrowed(data)
     };
-    if compact.len() / 4 * 3 > MAX_INPUT_BYTES {
-        return Err(too_large(compact.len() / 4 * 3));
+    // Every 4 base64 characters hold 3 bytes; trailing `=` padding holds none.
+    let padding = compact.bytes().rev().take_while(|&b| b == b'=').count();
+    let decoded_size = (compact.len() - padding) * 3 / 4;
+    if decoded_size > MAX_INPUT_BYTES {
+        return Err(too_large(decoded_size));
     }
     BASE64.decode(compact.as_bytes()).map_err(|error| {
         let hint = if compact.contains(['-', '_']) {
             " The text contains \"-\" or \"_\", which suggests URL-safe base64: only standard base64 (with \"+\" and \"/\") is supported."
         } else {
-            " If the data is raw gzip bytes passed as text, that cannot work: binary data has to arrive base64-encoded."
+            " Data must be gzip-compressed data encoded as base64 (it starts with \"H4sI\"): plain text, or raw gzip bytes passed as text, cannot be decompressed."
         };
         format!("\"Data\" is not valid base64: {error}.{hint}")
     })
-}
-
-fn decode_input(data: &str, encoding: Encoding) -> Result<Cow<'_, [u8]>, String> {
-    let bytes = match encoding {
-        Encoding::Utf8 => Cow::Borrowed(data.as_bytes()),
-        Encoding::Base64 => Cow::Owned(decode_base64(data)?),
-    };
-    if bytes.len() > MAX_INPUT_BYTES {
-        return Err(too_large(bytes.len()));
-    }
-    Ok(bytes)
 }
 
 fn encode_output(bytes: Vec<u8>, encoding: Encoding) -> Result<String, String> {
@@ -116,7 +108,7 @@ fn decompress(input: &[u8]) -> Result<Vec<u8>, String> {
     }
     if !input.starts_with(&GZIP_MAGIC) {
         return Err(String::from(
-            "\"Data\" is not gzip data: it does not start with the gzip signature (1f 8b, \"H4sI\" in base64) — check that the value really is gzip-compressed and that \"Input encoding\" matches how it is encoded",
+            "\"Data\" is not gzip data: it does not start with the gzip signature (1f 8b, \"H4sI\" in base64) — check that the value really is gzip-compressed and base64-encoded",
         ));
     }
     let mut output = Vec::with_capacity(input.len().saturating_mul(4).min(MAX_INPUT_BYTES));
@@ -139,10 +131,12 @@ fn decompress(input: &[u8]) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-fn run(data: &str, input_encoding: &str, output_encoding: &str) -> Result<String, String> {
-    let input_encoding = parse_encoding(input_encoding, "Input encoding", Encoding::Base64)?;
+/// Data is always base64: gzip data starts with 1f 8b, which is never valid UTF-8, so it cannot
+/// arrive as text.
+fn run(data: &str, output_encoding: &str) -> Result<String, String> {
     let output_encoding = parse_encoding(output_encoding, "Output encoding", Encoding::Utf8)?;
-    let input = decode_input(data, input_encoding)?;
+    // decode_base64 also enforces MAX_INPUT_BYTES: its size estimate is exact for valid base64.
+    let input = decode_base64(data)?;
     let decompressed = decompress(&input)?;
     encode_output(decompressed, output_encoding)
 }
@@ -150,16 +144,8 @@ fn run(data: &str, input_encoding: &str, output_encoding: &str) -> Result<String
 struct Gunzip;
 
 impl Guest for Gunzip {
-    fn gunzip(
-        data: Option<String>,
-        input_encoding: String,
-        output_encoding: String,
-    ) -> Result<String, String> {
-        run(
-            data.as_deref().unwrap_or_default(),
-            &input_encoding,
-            &output_encoding,
-        )
+    fn gunzip(data: Option<String>, output_encoding: String) -> Result<String, String> {
+        run(data.as_deref().unwrap_or_default(), &output_encoding)
     }
 }
 
@@ -173,51 +159,45 @@ mod tests {
 
     #[test]
     fn decompresses_real_gzip_output() {
-        assert_eq!(run(HELLO_GZIP, "base64", "utf8").unwrap(), "hello");
+        assert_eq!(run(HELLO_GZIP, "utf8").unwrap(), "hello");
     }
 
     #[test]
-    fn empty_encodings_use_the_defaults() {
-        assert_eq!(run(HELLO_GZIP, "", "").unwrap(), "hello");
+    fn empty_encoding_uses_the_default() {
+        assert_eq!(run(HELLO_GZIP, "").unwrap(), "hello");
     }
 
     #[test]
     fn base64_output_returns_the_raw_bytes_encoded() {
-        assert_eq!(run(HELLO_GZIP, "base64", "base64").unwrap(), "aGVsbG8=");
+        assert_eq!(run(HELLO_GZIP, "base64").unwrap(), "aGVsbG8=");
     }
 
     #[test]
     fn concatenated_members_are_all_decompressed() {
         let member = BASE64.decode(HELLO_GZIP).unwrap();
         let twice = BASE64.encode([member.clone(), member].concat());
-        assert_eq!(run(&twice, "base64", "utf8").unwrap(), "hellohello");
+        assert_eq!(run(&twice, "utf8").unwrap(), "hellohello");
     }
 
     #[test]
     fn trailing_nul_padding_is_ignored() {
         let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
         bytes.extend([0u8; 512]);
-        assert_eq!(
-            run(&BASE64.encode(bytes), "base64", "utf8").unwrap(),
-            "hello"
-        );
+        assert_eq!(run(&BASE64.encode(bytes), "utf8").unwrap(), "hello");
     }
 
     #[test]
     fn trailing_garbage_is_ignored() {
         let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
         bytes.extend(b"junk");
-        assert_eq!(
-            run(&BASE64.encode(bytes), "base64", "utf8").unwrap(),
-            "hello"
-        );
+        assert_eq!(run(&BASE64.encode(bytes), "utf8").unwrap(), "hello");
     }
 
     #[test]
     fn a_broken_second_member_is_still_an_error() {
         let mut bytes = BASE64.decode(HELLO_GZIP).unwrap();
         bytes.extend([0x1f, 0x8b, 0x08]);
-        let error = run(&BASE64.encode(bytes), "base64", "utf8").unwrap_err();
+        let error = run(&BASE64.encode(bytes), "utf8").unwrap_err();
         assert!(
             error.contains("not a valid gzip stream"),
             "error was: {error}"
@@ -226,21 +206,15 @@ mod tests {
 
     #[test]
     fn empty_data_is_a_clear_error() {
-        for (data, encoding) in [("", "base64"), ("  \n", "base64"), ("", "utf8")] {
-            let error = run(data, encoding, "utf8").unwrap_err();
+        for data in ["", "  \n"] {
+            let error = run(data, "utf8").unwrap_err();
             assert!(error.contains("\"Data\" is empty"), "error was: {error}");
         }
     }
 
     #[test]
     fn non_gzip_input_is_a_clear_error() {
-        let error = run(&BASE64.encode("<xml/>"), "base64", "utf8").unwrap_err();
-        assert!(error.contains("not gzip data"), "error was: {error}");
-    }
-
-    #[test]
-    fn plain_text_input_is_a_clear_error() {
-        let error = run("<xml/>", "utf8", "utf8").unwrap_err();
+        let error = run(&BASE64.encode("<xml/>"), "utf8").unwrap_err();
         assert!(error.contains("not gzip data"), "error was: {error}");
     }
 
@@ -248,7 +222,7 @@ mod tests {
     fn truncated_gzip_is_a_clear_error() {
         let bytes = BASE64.decode(HELLO_GZIP).unwrap();
         let truncated = BASE64.encode(&bytes[..bytes.len() - 6]);
-        let error = run(&truncated, "base64", "utf8").unwrap_err();
+        let error = run(&truncated, "utf8").unwrap_err();
         assert!(
             error.contains("not a valid gzip stream"),
             "error was: {error}"
@@ -256,8 +230,28 @@ mod tests {
     }
 
     #[test]
+    fn padded_base64_of_exactly_the_limit_is_accepted() {
+        for size in [MAX_INPUT_BYTES, MAX_INPUT_BYTES - 2] {
+            let encoded = BASE64.encode(vec![0u8; size]);
+            assert!(encoded.ends_with('='), "test needs padding, size {size}");
+            assert_eq!(decode_base64(&encoded).unwrap().len(), size);
+        }
+        let error = decode_base64(&BASE64.encode(vec![0u8; MAX_INPUT_BYTES + 1])).unwrap_err();
+        assert!(error.contains("more than"), "error was: {error}");
+    }
+
+    #[test]
+    fn plain_text_data_is_a_clear_error() {
+        let error = run("<Document/>", "utf8").unwrap_err();
+        assert!(
+            error.contains("not valid base64") && error.contains("plain text"),
+            "error was: {error}"
+        );
+    }
+
+    #[test]
     fn invalid_base64_is_a_clear_error() {
-        let error = run("H4sI***", "base64", "utf8").unwrap_err();
+        let error = run("H4sI***", "utf8").unwrap_err();
         assert!(error.contains("not valid base64"), "error was: {error}");
     }
 

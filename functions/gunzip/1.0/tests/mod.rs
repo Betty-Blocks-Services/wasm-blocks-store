@@ -9,18 +9,13 @@ use std::process::{Command, Stdio};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 
-fn gunzip(data: &str, input_encoding: &str, output_encoding: &str) -> Result<String, String> {
+fn gunzip(data: &str, output_encoding: &str) -> Result<String, String> {
     let harness = bindings::harness();
     let mut component = bindings::instantiate(harness);
     component
         .component
         .betty_blocks_gunzip_gunzip()
-        .call_gunzip(
-            &mut component.store,
-            Some(data),
-            input_encoding,
-            output_encoding,
-        )
+        .call_gunzip(&mut component.store, Some(data), output_encoding)
         .unwrap()
 }
 
@@ -80,7 +75,7 @@ fn round_trips_through_a_real_component_instance() {
         large_xml(),
     ] {
         let compressed = STANDARD.encode(gzip_natively(input.as_bytes()));
-        assert_eq!(gunzip(&compressed, "base64", "utf8").unwrap(), input);
+        assert_eq!(gunzip(&compressed, "utf8").unwrap(), input);
     }
 }
 
@@ -91,7 +86,7 @@ fn decompresses_system_gzip_output() {
         return;
     };
     let compressed = STANDARD.encode(compressed);
-    assert_eq!(gunzip(&compressed, "base64", "utf8").unwrap(), xml);
+    assert_eq!(gunzip(&compressed, "utf8").unwrap(), xml);
 }
 
 #[test]
@@ -99,14 +94,14 @@ fn trailing_nul_padding_is_ignored_like_gzip_d_does() {
     let mut padded = gzip_natively(b"Hello, world!");
     padded.extend([0u8; 512]);
     assert_eq!(
-        gunzip(&STANDARD.encode(padded), "base64", "utf8").unwrap(),
+        gunzip(&STANDARD.encode(padded), "utf8").unwrap(),
         "Hello, world!"
     );
 }
 
 #[test]
 fn empty_data_is_an_error_not_a_trap() {
-    let error = gunzip("", "base64", "utf8").unwrap_err();
+    let error = gunzip("", "utf8").unwrap_err();
     assert!(error.contains("\"Data\" is empty"), "error was: {error}");
 }
 
@@ -115,21 +110,21 @@ fn binary_content_comes_back_as_base64() {
     let bytes: Vec<u8> = (0..=255).collect();
     let compressed = STANDARD.encode(gzip_natively(&bytes));
     assert_eq!(
-        gunzip(&compressed, "base64", "base64").unwrap(),
+        gunzip(&compressed, "base64").unwrap(),
         STANDARD.encode(&bytes)
     );
-    let error = gunzip(&compressed, "base64", "utf8").unwrap_err();
+    let error = gunzip(&compressed, "utf8").unwrap_err();
     assert!(error.contains("not valid UTF-8"), "error was: {error}");
 }
 
 #[test]
 fn non_gzip_input_is_an_error_not_a_trap() {
-    let error = gunzip(&STANDARD.encode("<Document/>"), "base64", "utf8").unwrap_err();
+    let error = gunzip(&STANDARD.encode("<Document/>"), "utf8").unwrap_err();
     assert!(error.contains("not gzip data"), "error was: {error}");
 }
 
 #[test]
 fn invalid_base64_is_an_error_not_a_trap() {
-    let error = gunzip("H4sI %% broken", "base64", "utf8").unwrap_err();
+    let error = gunzip("H4sI %% broken", "utf8").unwrap_err();
     assert!(error.contains("not valid base64"), "error was: {error}");
 }

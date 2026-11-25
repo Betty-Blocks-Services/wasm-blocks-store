@@ -64,8 +64,11 @@ fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     } else {
         Cow::Borrowed(data)
     };
-    if compact.len() / 4 * 3 > MAX_INPUT_BYTES {
-        return Err(too_large(compact.len() / 4 * 3));
+    // Every 4 base64 characters hold 3 bytes; trailing `=` padding holds none.
+    let padding = compact.bytes().rev().take_while(|&b| b == b'=').count();
+    let decoded_size = (compact.len() - padding) * 3 / 4;
+    if decoded_size > MAX_INPUT_BYTES {
+        return Err(too_large(decoded_size));
     }
     BASE64.decode(compact.as_bytes()).map_err(|error| {
         let hint = if compact.contains(['-', '_']) {
@@ -88,18 +91,6 @@ fn decode_input(data: &str, encoding: Encoding) -> Result<Cow<'_, [u8]>, String>
     Ok(bytes)
 }
 
-fn encode_output(bytes: Vec<u8>, encoding: Encoding) -> Result<String, String> {
-    match encoding {
-        Encoding::Base64 => Ok(BASE64.encode(bytes)),
-        Encoding::Utf8 => String::from_utf8(bytes).map_err(|error| {
-            format!(
-                "the result is not valid UTF-8 text (invalid byte at position {}) — set \"Output encoding\" to base64",
-                error.utf8_error().valid_up_to()
-            )
-        }),
-    }
-}
-
 /// Gzip-compresses `input`. The header's modification time is 0 and no file name is stored,
 /// so the same input always gives byte-identical output.
 fn compress(input: &[u8]) -> Result<Vec<u8>, String> {
@@ -113,27 +104,18 @@ fn compress(input: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|error| format!("compressing the data failed: {error}"))
 }
 
-fn run(data: &str, input_encoding: &str, output_encoding: &str) -> Result<String, String> {
+/// The result is always base64: gzip output starts with 1f 8b, which is never valid UTF-8.
+fn run(data: &str, input_encoding: &str) -> Result<String, String> {
     let input_encoding = parse_encoding(input_encoding, "Input encoding", Encoding::Utf8)?;
-    let output_encoding = parse_encoding(output_encoding, "Output encoding", Encoding::Base64)?;
     let input = decode_input(data, input_encoding)?;
-    let compressed = compress(&input)?;
-    encode_output(compressed, output_encoding)
+    Ok(BASE64.encode(compress(&input)?))
 }
 
 struct Gzip;
 
 impl Guest for Gzip {
-    fn gzip(
-        data: Option<String>,
-        input_encoding: String,
-        output_encoding: String,
-    ) -> Result<String, String> {
-        run(
-            data.as_deref().unwrap_or_default(),
-            &input_encoding,
-            &output_encoding,
-        )
+    fn gzip(data: Option<String>, input_encoding: String) -> Result<String, String> {
+        run(data.as_deref().unwrap_or_default(), &input_encoding)
     }
 }
 
@@ -143,22 +125,20 @@ mod tests {
 
     #[test]
     fn output_starts_with_the_gzip_magic_bytes() {
-        let result = run("<xml/>", "utf8", "base64").unwrap();
+        let result = run("<xml/>", "utf8").unwrap();
         assert!(result.starts_with("H4sI"), "result was: {result}");
     }
 
     #[test]
     fn same_input_gives_identical_output() {
-        let first = run("hello hello hello", "utf8", "base64").unwrap();
-        let second = run("hello hello hello", "utf8", "base64").unwrap();
+        let first = run("hello hello hello", "utf8").unwrap();
+        let second = run("hello hello hello", "utf8").unwrap();
         assert_eq!(first, second);
     }
 
     #[test]
     fn header_has_mtime_zero() {
-        let compressed = BASE64
-            .decode(run("abc", "utf8", "base64").unwrap())
-            .unwrap();
+        let compressed = BASE64.decode(run("abc", "utf8").unwrap()).unwrap();
         assert_eq!(&compressed[..3], &[0x1f, 0x8b, 0x08]);
         assert_eq!(&compressed[4..8], &[0, 0, 0, 0]);
     }
@@ -168,8 +148,8 @@ mod tests {
         let xml = "<Document><Amount>12.50</Amount></Document>";
         let as_base64 = BASE64.encode(xml);
         assert_eq!(
-            run(&as_base64, "base64", "base64").unwrap(),
-            run(xml, "utf8", "base64").unwrap()
+            run(&as_base64, "base64").unwrap(),
+            run(xml, "utf8").unwrap()
         );
     }
 
@@ -182,42 +162,41 @@ mod tests {
             &encoded[..10],
             encoded[10..].trim_end_matches('=')
         );
-        assert_eq!(
-            run(&wrapped, "base64", "base64").unwrap(),
-            run(xml, "utf8", "base64").unwrap()
-        );
+        assert_eq!(run(&wrapped, "base64").unwrap(), run(xml, "utf8").unwrap());
     }
 
     #[test]
-    fn empty_encodings_use_the_defaults() {
-        assert_eq!(
-            run("abc", "", "").unwrap(),
-            run("abc", "utf8", "base64").unwrap()
-        );
+    fn empty_encoding_uses_the_default() {
+        assert_eq!(run("abc", "").unwrap(), run("abc", "utf8").unwrap());
+    }
+
+    #[test]
+    fn padded_base64_of_exactly_the_limit_is_accepted() {
+        for size in [MAX_INPUT_BYTES, MAX_INPUT_BYTES - 2] {
+            let encoded = BASE64.encode(vec![0u8; size]);
+            assert!(encoded.ends_with('='), "test needs padding, size {size}");
+            assert_eq!(decode_base64(&encoded).unwrap().len(), size);
+        }
+        let error = decode_base64(&BASE64.encode(vec![0u8; MAX_INPUT_BYTES + 1])).unwrap_err();
+        assert!(error.contains("more than"), "error was: {error}");
     }
 
     #[test]
     fn invalid_base64_is_a_clear_error() {
-        let error = run("not base64!", "base64", "base64").unwrap_err();
+        let error = run("not base64!", "base64").unwrap_err();
         assert!(error.contains("not valid base64"), "error was: {error}");
     }
 
     #[test]
     fn url_safe_base64_gets_a_hint() {
-        let error = run("ab-_", "base64", "base64").unwrap_err();
+        let error = run("ab-_", "base64").unwrap_err();
         assert!(error.contains("URL-safe"), "error was: {error}");
     }
 
     #[test]
     fn unknown_encoding_is_a_clear_error() {
-        let error = run("abc", "hex", "base64").unwrap_err();
+        let error = run("abc", "hex").unwrap_err();
         assert!(error.contains("\"Input encoding\""), "error was: {error}");
-    }
-
-    #[test]
-    fn binary_output_as_utf8_is_a_clear_error() {
-        let error = run("abc", "utf8", "utf8").unwrap_err();
-        assert!(error.contains("not valid UTF-8"), "error was: {error}");
     }
 
     #[test]

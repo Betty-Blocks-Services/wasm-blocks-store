@@ -4,20 +4,22 @@ Decompresses gzip data, the inverse of [GZIP](../../gzip/1.0/README.md). Use it 
 response from an API, or to check what a GZIP step produced.
 
 **Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested locally (unit tests and tests through a real component instance,
-including data compressed by the system's `gzip`). The handling of trailing bytes and of empty Data
-was added after the canvas test and is tested locally only.
+including data compressed by the system's `gzip`). The handling of trailing bytes and of empty Data,
+and the removal of the Input encoding option (it could never work, see below), came after the
+canvas test, so the step needs re-publishing and another canvas run.
 
 ## Options
 
 | Option | Notes |
 |---|---|
-| Data | The gzip data, normally as base64 (it starts with `H4sI`) |
-| Input encoding | `base64` (default): Data is base64-decoded first. `utf8`: Data's UTF-8 bytes are taken as the gzip data, which only works in the rare case that they are valid UTF-8 |
+| Data | The gzip data as base64 (it starts with `H4sI`) |
 | Output encoding | `utf8` (default): the decompressed data as text, e.g. XML. `base64`: the decompressed bytes as base64, for binary content such as a PDF |
 | Result | The decompressed data, encoded as Output encoding says |
 
 ## Things to know
 
+- **Data is always base64.** There is no text option for it, because gzip data starts with the
+  bytes `1f 8b`, which can never be valid UTF-8.
 - **Base64** is read as standard base64 (`+` and `/`); line breaks and missing `=` padding are
   accepted. Base64 output is padded, on one line.
 - **Several gzip streams one after another** are all decompressed and joined, as `gzip -d` does.

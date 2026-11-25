@@ -12,7 +12,7 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 **Fact:** the schema `bb functions validate` uses ([`bettyblocks/json-schema` `schemas/actions/function.json`](https://github.com/bettyblocks/json-schema/blob/master/schemas/actions/function.json), last changed 2026-11-16) fixes `icon.color` to `Yellow`, `Green`, `Pink`, `Orange`, `Purple`, `Blue`, `Teal`, `Grey`, but `icon.name` is any string ("defined by a set we have available in our framework"). The public `@betty-blocks/design` package (30.0.0) has 198 icon components, but it is not that set: 10 of the 18 names the official steps use (`UploadIcon`, `TrashIcon`, `ActionsIcon`, ...) are not in it.
 
-Icon names known to work, because an official step or a step in this repo uses them: `ActionsIcon`, `ArrayIcon`, `ArrowClockwiseIcon`, `AtIcon`, `BracketsCurly`, `CloudIcon`, `DataIcon`, `DataJumpUpIcon`, `ExpressionIcon`, `FileLogIcon`, `FinishIcon`, `LockIcon`, `ObjectIcon`, `PlusIcon`, `PublicPageIcon`, `QuestionIcon`, `TextIcon`, `TrashIcon`, `UploadIcon`, `VariableIcon`.
+Icon names known to work, because an official step or a step in this repo uses them: `ActionsIcon`, `ArrayIcon`, `ArrowClockwiseIcon`, `AtIcon`, `BracketsCurly`, `CloudIcon`, `DataIcon`, `DataJumpUpIcon`, `ExpressionIcon`, `FileLogIcon`, `FileZIPIcon`, `FinishIcon`, `LockIcon`, `ObjectIcon`, `PlusIcon`, `PublicPageIcon`, `QuestionIcon`, `TextIcon`, `TrashIcon`, `UploadIcon`, `VariableIcon`.
 
 **How found:** read the schema and every `function.json` in `native-wasm-components` and `block-store-wasm-components`, and unpacked `@betty-blocks/design` from npm, on 2026-11-24.
 
@@ -30,9 +30,11 @@ Also confirmed: the icon picker in the IDE's "Add custom Wasm step" upload flow 
 
 **How found:** building the `gzip`/`gunzip` steps on 2026-11-24 on a machine whose default toolchain was 1.93. Installed 1.94 next to it (`rustup toolchain install 1.94 --target wasm32-wasip2 -c clippy -c rustfmt`) and ran the checks with `RUSTUP_TOOLCHAIN=1.94`, without changing the default toolchain.
 
-**Why it matters:** CI uses the latest stable Rust, so a PR CI run hits the same clippy error, whatever the PR changes. Fixed in the gzip/gunzip PR: `!spans.get(next).is_some_and(|span| span.start <= *at)` became `spans.get(next).is_none_or(|span| span.start > *at)`, which means the same. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
+**Correction (2026-11-25):** this entry first said CI hits the same clippy error on every PR. It does not: CI's `run-ci` installs the latest stable (rustc 1.100.0 on 2026-11-24), whose clippy does not report this lint, and `main` and the open PRs were green. The lint appears on clippy 1.94 only (the original line also passes clippy 1.97), so it only affects someone running `just quality-check` on a 1.94 toolchain.
 
-**Status:** confirmed locally on 2026-11-24; the clippy error is fixed: resolved.
+**Why it matters:** a local 1.94 toolchain, which `cargo test` needs at minimum, fails `just quality-check` on code CI accepts. Fixed in its own PR (#22): `!spans.get(next).is_some_and(|span| span.start <= *at)` became `spans.get(next).is_none_or(|span| span.start > *at)`, which means the same. Locally, `rustup update stable` or a 1.94+ toolchain is needed to run the tests at all. Belongs in the crash course's setup section.
+
+**Status:** confirmed locally on 2026-11-24; the CI claim corrected on 2026-11-25 from the `run-ci` log; the clippy error is fixed in #22: resolved.
 
 ---
 

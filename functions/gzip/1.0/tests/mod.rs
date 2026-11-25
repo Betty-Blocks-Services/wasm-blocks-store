@@ -9,18 +9,13 @@ use std::process::{Command, Stdio};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 
-fn gzip(data: &str, input_encoding: &str, output_encoding: &str) -> Result<String, String> {
+fn gzip(data: &str, input_encoding: &str) -> Result<String, String> {
     let harness = bindings::harness();
     let mut component = bindings::instantiate(harness);
     component
         .component
         .betty_blocks_gzip_gzip()
-        .call_gzip(
-            &mut component.store,
-            Some(data),
-            input_encoding,
-            output_encoding,
-        )
+        .call_gzip(&mut component.store, Some(data), input_encoding)
         .unwrap()
 }
 
@@ -81,7 +76,7 @@ fn round_trips_through_a_real_component_instance() {
         String::from("Grüße – 日本語 – 🚀 – €12,50"),
         large_xml(),
     ] {
-        let result = gzip(&input, "utf8", "base64").unwrap();
+        let result = gzip(&input, "utf8").unwrap();
         assert!(result.starts_with("H4sI"), "result was: {result}");
         let compressed = STANDARD.decode(&result).unwrap();
         assert_eq!(gunzip_natively(&compressed), input.as_bytes());
@@ -91,9 +86,7 @@ fn round_trips_through_a_real_component_instance() {
 #[test]
 fn system_gzip_decompresses_the_output() {
     let xml = large_xml();
-    let compressed = STANDARD
-        .decode(gzip(&xml, "utf8", "base64").unwrap())
-        .unwrap();
+    let compressed = STANDARD.decode(gzip(&xml, "utf8").unwrap()).unwrap();
     assert!(
         compressed.len() < xml.len() / 4,
         "the XML barely compressed"
@@ -106,18 +99,15 @@ fn system_gzip_decompresses_the_output() {
 #[test]
 fn output_is_deterministic() {
     let xml = large_xml();
-    assert_eq!(
-        gzip(&xml, "utf8", "base64").unwrap(),
-        gzip(&xml, "utf8", "base64").unwrap()
-    );
+    assert_eq!(gzip(&xml, "utf8").unwrap(), gzip(&xml, "utf8").unwrap());
 }
 
 #[test]
 fn base64_input_gives_the_same_result_as_raw_text() {
     let xml = large_xml();
     assert_eq!(
-        gzip(&STANDARD.encode(&xml), "base64", "base64").unwrap(),
-        gzip(&xml, "utf8", "base64").unwrap()
+        gzip(&STANDARD.encode(&xml), "base64").unwrap(),
+        gzip(&xml, "utf8").unwrap()
     );
 }
 
@@ -128,7 +118,7 @@ fn a_missing_value_is_treated_as_empty() {
     let result = component
         .component
         .betty_blocks_gzip_gzip()
-        .call_gzip(&mut component.store, None, "utf8", "base64")
+        .call_gzip(&mut component.store, None, "utf8")
         .unwrap()
         .unwrap();
     assert!(gunzip_natively(&STANDARD.decode(result).unwrap()).is_empty());
@@ -136,6 +126,6 @@ fn a_missing_value_is_treated_as_empty() {
 
 #[test]
 fn invalid_base64_is_an_error_not_a_trap() {
-    let error = gzip("this is %% not base64", "base64", "base64").unwrap_err();
+    let error = gzip("this is %% not base64", "base64").unwrap_err();
     assert!(error.contains("not valid base64"), "error was: {error}");
 }

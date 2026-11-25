@@ -1,5 +1,5 @@
 {
-  "description": "Compresses data with gzip. Takes text or base64, returns base64 (or text) so the result can go in an API payload, e.g. a bank payment file.",
+  "description": "Compresses data with gzip. Takes text or base64, returns base64 so the result can go in an API payload, e.g. a bank payment file.",
   "label": "GZIP",
   "category": "Misc",
   "icon": {
@@ -42,28 +42,6 @@
     },
     {
       "meta": {
-        "type": "Select",
-        "default": "base64",
-        "values": [
-          {
-            "label": "UTF-8 text",
-            "value": "utf8"
-          },
-          {
-            "label": "Base64",
-            "value": "base64"
-          }
-        ],
-        "validations": {
-          "required": true
-        }
-      },
-      "name": "output-encoding",
-      "label": "Output encoding",
-      "info": "Base64: the compressed bytes as a standard, padded base64 string. Gzip output is binary, so UTF-8 text fails for almost any input."
-    },
-    {
-      "meta": {
         "type": "Output",
         "validations": {
           "required": true
@@ -74,7 +52,7 @@
       },
       "name": "result",
       "label": "Result",
-      "info": "The compressed data, base64-encoded unless Output encoding says otherwise."
+      "info": "The compressed data as a standard, padded base64 string (it starts with H4sI)."
     }
   ],
   "yields": "NONE"
