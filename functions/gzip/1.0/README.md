@@ -8,9 +8,9 @@ The steps only exchange text values, so the binary gzip data never leaves the st
 how the input is read (plain text or base64), and the result is always base64.
 
 **Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested locally (unit tests and tests through a real component instance,
-including decompressing the output with the system's `gzip -d`). The Output encoding option was
-removed after the canvas test (it could never work, see below), so the step needs re-publishing
-and another canvas run.
+including decompressing the output with the system's `gzip -d`). Re-published and run on the
+canvas again on 2026-11-25, after the Output encoding option was removed (it could never work, see
+below).
 
 ## Options
 

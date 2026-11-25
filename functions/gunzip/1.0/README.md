@@ -4,9 +4,9 @@ Decompresses gzip data, the inverse of [GZIP](../../gzip/1.0/README.md). Use it 
 response from an API, or to check what a GZIP step produced.
 
 **Status:** published with `bb functions publish` and run on a canvas of a test app. Also tested locally (unit tests and tests through a real component instance,
-including data compressed by the system's `gzip`). The handling of trailing bytes and of empty Data,
-and the removal of the Input encoding option (it could never work, see below), came after the
-canvas test, so the step needs re-publishing and another canvas run.
+including data compressed by the system's `gzip`). Re-published and run on the canvas
+again on 2026-11-25, after adding the handling of trailing bytes and of empty Data and removing the
+Input encoding option (it could never work, see below).
 
 ## Options
 
