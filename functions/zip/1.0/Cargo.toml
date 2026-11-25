@@ -1,0 +1,22 @@
+[package]
+name = "zip-step"
+version = "1.0.0"
+edition.workspace = true
+build = "../../../build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = { workspace = true }
+# Not used directly: makes sure zip's flate2 gets the pure-Rust backend.
+flate2 = { workspace = true }
+serde_json = { workspace = true }
+wit-bindgen = { workspace = true }
+# HTTP client on wasi:http, as in the native send-mail and store-file steps.
+wstd = "0.6"
+# Only the Deflate method, on flate2's pure-Rust backend (no C code, builds for wasm32-wasip2).
+zip = { version = "9.8", default-features = false, features = ["deflate-flate2"] }
+
+[dev-dependencies]
+wasmtime-testing-helper = { workspace = true, features = ["http"] }

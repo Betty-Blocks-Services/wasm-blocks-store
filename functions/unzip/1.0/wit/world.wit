@@ -1,0 +1,30 @@
+package betty-blocks:unzip@1.0.0;
+
+interface unzip {
+    use betty-blocks-types:data-api/data-api@3.0.0.{helper-context};
+    use betty-blocks-types:types/types@3.0.0.{betty-model, betty-property};
+
+    // A Value option arrives as JSON (the native steps type it `betty-value = json-string`). A
+    // named alias, not a bare `string`, for the result too, as the native init-array step returns
+    // its Array output (read from its source; the platform is expected to JSON-parse it).
+    type json-string = string;
+
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `helper-context` is injected by the platform and is not an option.
+    // A Property option arrives as a list (the platform passes [{ kind, name }]).
+    unzip: func(
+        helper-context: helper-context,
+        zip-file: json-string,
+        model-target: betty-model,
+        property-target: list<betty-property>,
+    ) -> result<json-string, string>;
+}
+
+// Named after the step, like data-api-request's world (see the note there about `main`).
+world unzip-world {
+    import betty-blocks-types:data-api/data-api@3.0.0;
+    import betty-blocks-types:types/types@3.0.0;
+    import betty-blocks-types:upload-file/upload-file@4.0.0;
+
+    export unzip;
+}

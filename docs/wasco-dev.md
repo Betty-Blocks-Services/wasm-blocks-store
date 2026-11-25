@@ -69,7 +69,8 @@ Not every wasco-dev component is a drop-in `.wasm` you can hand to the wizard as
   `wasi:cli`/`wasi:io`/`wasi:clocks` set, because its source performs its own HTTP calls via the
   `wstd` crate. The checked-in source and the published component disagreed. Not necessarily a
   blocker — Betty Blocks supports `wasi:http/outgoing-handler` (confirmed live at `@0.2.6`, via
-  `wasm-blocks-store`'s own `exchange-code-for-tokens` step), but this artifact uses `@0.2.9`,
+  `wasm-blocks-store`'s own `exchange-code-for-tokens` step, and at `@0.2.12`, via the `zip` and
+  `unzip` steps built with `wstd` 0.6.8), but this artifact uses `@0.2.9`,
   which hasn't itself been tested on Betty Blocks — check the exact version before assuming it
   works. Also a reminder that "check its WIT imports" above means the real `.wasm`, not just the
   repo's source file.
