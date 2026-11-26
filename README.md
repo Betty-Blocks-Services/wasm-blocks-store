@@ -117,4 +117,11 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+One import step, ported from the ActionsJS Import CSV/XLS(X) step. It is not run on a canvas yet:
+
+- `functions/import-records/1.0/` — downloads a CSV or Excel file and imports its rows into a model
+  (a column mapping, number/decimal/checkbox/date formats, belongs-to relations by value, and
+  deduplication that updates existing records). See its README for the options and the differences
+  from the ActionsJS step.
+
 See `docs/developer-learnings-log.md` for the full history.

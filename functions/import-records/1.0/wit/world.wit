@@ -1,0 +1,60 @@
+package betty-blocks:import-records@1.0.0;
+
+interface import-records {
+    use betty-blocks-types:data-api/data-api@3.0.0.{helper-context};
+    use betty-blocks-types:types/types@3.0.0.{betty-model};
+
+    // Map options arrive as a JSON string.
+    type json-string = string;
+
+    // The Select options are enums: each value in function.json is a case name here, the
+    // convention of the native HTTP step's betty-http-method enum. A case name is kebab-case
+    // words and cannot be a symbol, so the delimiter values are names (`comma`, not `,`).
+    enum file-type {
+        csv,
+        excel,
+    }
+
+    // `auto` picks the character that splits the header row into the most columns.
+    enum delimiter {
+        auto,
+        semicolon,
+        comma,
+        pipe,
+        tab,
+    }
+
+    // The type of the property the unique column is mapped to.
+    enum unique-type {
+        text,
+        number,
+        decimal,
+        id,
+    }
+
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `helper-context` is injected by the platform and is not an option.
+    import-records: func(
+        helper-context: helper-context,
+        file-url: string,
+        file-type: file-type,
+        delimiter: delimiter,
+        model: betty-model,
+        import-mapping: json-string,
+        format-mapping: json-string,
+        default-mapping: json-string,
+        deduplicate: option<bool>,
+        unique-column: option<string>,
+        unique-type: unique-type,
+        update-mapping: json-string,
+        validate-required-columns: option<bool>,
+    ) -> result<string, string>;
+}
+
+world import-records-world {
+    import betty-blocks-types:data-api/data-api@3.0.0;
+    import betty-blocks-types:types/types@3.0.0;
+    import wasi:http/outgoing-handler@0.2.6;
+
+    export import-records;
+}

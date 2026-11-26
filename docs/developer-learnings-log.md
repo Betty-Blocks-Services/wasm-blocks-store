@@ -8,6 +8,20 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## A `waki` GET works against `wasmtime-testing-helper`'s stubbed HTTP handler, also next to `betty-blocks-types` imports (2026-11-26)
+
+**Fact:** `import-records` 1.0 downloads its file with `waki` (`Client::new().get(url).send()`, then `body()`), with the `wit-bindgen 0.42` / `wasi 0.14.2` / `waki 0.5.1` trio and the `with:` remap of `exchange-code-for-tokens`. Its world imports `wasi:http/outgoing-handler@0.2.6` next to `betty-blocks-types:data-api@3.0.0` and `types@3.0.0`. In `tests/mod.rs` the built component runs with `harness.stub_http_handler(Ok(hyper::Response::builder().status(..).body(..)))` and `harness.mock(DATA_API, "request", ..)` together: the stubbed body (and a stubbed 403) reaches the component, and the Data API mock sees the requests that follow. `exchange-code-for-tokens/1.0/tests/mod.rs` records a `StreamError::Closed` for its `waki` POST in the same harness; a GET without a request body does not hit it.
+
+**How found:** writing the component tests of `import-records` (3 tests, passing with `cargo +1.94 test -p import-records`).
+
+**Why it matters:** a step that downloads something can be tested end to end without a network. The POST failure is probably about sending a request body, not about `waki` and the harness in general (not investigated).
+
+**Where this lands:** the crash course's section on testing a step that makes HTTP calls.
+
+**Status:** confirmed for GET in the test harness, 2026-11-26. Not yet run on a canvas.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:

@@ -1,0 +1,162 @@
+{
+  "description": "Import the rows of a CSV or Excel file into a model: map columns to properties, convert numbers, dates and checkboxes, and update existing records instead of creating duplicates.",
+  "label": "Import from CSV or Excel",
+  "category": "Utilities",
+  "icon": {
+    "name": "UploadIcon",
+    "color": "Green"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "file-url",
+      "label": "URL to the import file",
+      "info": "A public URL, or the url of a file property (e.g. from an Expression step). The step downloads the file from this URL."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "csv",
+        "values": [
+          { "label": "CSV", "value": "csv" },
+          { "label": "Excel (XLSX, XLS or ODS)", "value": "excel" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "file-type",
+      "label": "Import file type",
+      "info": "CSV or Excel. For Excel the first sheet is imported."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "auto",
+        "values": [
+          { "label": "Detect", "value": "auto" },
+          { "label": ";", "value": "semicolon" },
+          { "label": ",", "value": "comma" },
+          { "label": "|", "value": "pipe" },
+          { "label": "tab", "value": "tab" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "delimiter",
+      "label": "Delimiter",
+      "info": "The character between the values in a CSV file. Detect picks the one that occurs most in the header row. Not used for Excel."
+    },
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model",
+      "label": "Import model",
+      "info": "The model the records are imported into."
+    },
+    {
+      "meta": {
+        "type": "Map",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "import-mapping",
+      "label": "Import mapping",
+      "info": "KEY = column name in the file, VALUE = database name of the property, e.g. first_name. For a belongs-to relation: model.property, e.g. company.name. End a KEY with * to mark a required column."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "format-mapping",
+      "label": "Format mapping for import columns",
+      "info": "KEY = column name, VALUE = checkbox, decimal, number, text, or Date, <format> (also Time, and Datetime,), e.g. Date, dd-MM-yyyy. Columns without a format are imported as text."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "default-mapping",
+      "label": "Default mapping",
+      "info": "KEY = database name of a property or relation, VALUE = the value (or related record id) to set on every imported record."
+    },
+    {
+      "meta": {
+        "type": "Boolean",
+        "default": false
+      },
+      "name": "deduplicate",
+      "label": "Deduplicate records (update records if matched)",
+      "info": "When on, a row whose unique column matches an existing record updates that record instead of creating a new one. Rows with an empty unique column are skipped."
+    },
+    {
+      "meta": {
+        "type": "Text"
+      },
+      "name": "unique-column",
+      "label": "Unique record identifier (import column name)",
+      "info": "The column that identifies a record, as written in the Import mapping. Used when Deduplicate records is on."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "text",
+        "values": [
+          { "label": "Text", "value": "text" },
+          { "label": "Number", "value": "number" },
+          { "label": "Decimal", "value": "decimal" },
+          { "label": "Id", "value": "id" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "unique-type",
+      "label": "Unique record type",
+      "info": "The type of the property the unique column is mapped to. Used when Deduplicate records is on."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "update-mapping",
+      "label": "Update mapping for existing records",
+      "info": "Same as the Import mapping, but used for records that are updated. Leave empty to update existing records with the Import mapping."
+    },
+    {
+      "meta": {
+        "type": "Boolean",
+        "default": false
+      },
+      "name": "validate-required-columns",
+      "label": "Validate required columns",
+      "info": "When on, the step fails before importing anything if a column whose KEY ends with * is not in the file."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "How many records were created and updated, e.g. Records created: 10, records updated: 2."
+    }
+  ],
+  "yields": "NONE"
+}
