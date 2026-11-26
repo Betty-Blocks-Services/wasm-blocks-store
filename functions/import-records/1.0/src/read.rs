@@ -73,7 +73,7 @@ fn line_at(text: &str, offset: usize) -> usize {
     before.iter().filter(|byte| **byte == b'\n').count() + lone_returns + 1
 }
 
-const DELIMITERS: [u8; 4] = [b',', b';', b'\t', b'|'];
+const DELIMITERS: &[u8; 4] = b",;\t|";
 
 /// The delimiter that occurs most often (outside quotes) in the first line, `,` when there is
 /// none. On a tie the earlier one in `,` `;` tab `|` wins.
