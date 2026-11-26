@@ -6,15 +6,15 @@ the Data API: new records with `createMany<Model>`, existing records (with dedup
 (Betty-Blocks-Services/import-csv).
 
 **Status:** built for `wasm32-wasip2`, unit-tested and component-tested (`cargo test -p
-import-records`). **Not run on a canvas yet.** Until it is, it does not meet the bar in
-[CONTRIBUTING.md](../../../CONTRIBUTING.md). See "Not tested yet" for what the canvas run has to
-show.
+import-records`). **Run on a canvas** (2026-11-26): a CSV from a file property URL was downloaded
+and imported, creating records, and the Result text reached the action. See "Not tested yet" for
+what that run did not cover.
 
 ## Options
 
 | Option | Notes |
 |---|---|
-| URL to the import file | An `https://` (or `http://`) URL. Spaces and other characters a URL may not contain (as in a file property URL with the file name in it) are percent-encoded. Up to 5 redirects are followed |
+| URL to the import file | An `https://` (or `http://`) URL. Spaces and other characters a URL may not contain (as in a file property URL with the file name in it) are percent-encoded. A `#` or `?` in a file name cannot be told apart from the URL's fragment or query and breaks the download. Up to 5 redirects are followed |
 | Import file type | CSV or Excel (values `csv`, `excel`, WIT `enum file-type`). Excel reads the first sheet of an xlsx, xlsm, xls or ods file |
 | Delimiter | Detect, `;`, `,`, `\|` or tab (values `auto`, `semicolon`, `comma`, `pipe`, `tab`, WIT `enum delimiter`). Detect counts each one in the header row and picks the most common one (`,` on a tie or when there is none). CSV only |
 | Import model | The model the records go into |
@@ -52,7 +52,7 @@ show.
     and `S`; text in single quotes is literal. Numbers may have fewer digits than the pattern
     (`dd-MM-yyyy` reads `1-2-2024`). An ISO date (`2024-01-31`, with or without a time) is accepted
     in any date column. An Excel date cell is used as it is, whatever the pattern.
-  - An empty cell is `null`.
+  - An empty cell, or one with only spaces, is `null`.
 - **Missing columns:** a mapped column that is not in the file is left out of the records (not
   set to `null`). If none of the Import mapping's columns is in the file, the step fails and lists
   the file's columns, which usually means the wrong delimiter or a typo.
@@ -103,21 +103,16 @@ show.
 
 ## Not tested yet
 
-To check in the first canvas run:
+Confirmed in the first canvas run: downloading over `wasi:http` from a file property URL (once
+spaces in it were encoded), the Import mapping as a Map, `createMany<Model>(input: $input)` through
+the host `request` function with the `helper-context`, and the Text Result. Still to check:
 
-- **Writing through `request`.** The step writes with the host `data-api` `request` function and
-  the `helper-context`, which this repo's steps have used for reads only. The mutations
-  (`createMany<Model>(input: $input)`, `upsertMany<Model>(input: $input)`) have the shape that
-  `wasm-base-components`' data-api sends and that the ActionsJS step used. A direct `update<Model>`
-  mutation was refused in an earlier test (developer learnings log, 2026-10-23), with an inline
-  input and no variables. If the Data API refuses these too, the fallback is the native steps' route:
-  a `borrow<data-api>` parameter instead of `helper-context`.
-- **The lookup query** declares `$where: <Model>FilterInput`, as the platform's crud component does.
+- **Updates**: `upsertMany<Model>(input: $input)` and the lookup query, which declares
+  `$where: <Model>FilterInput` as the platform's crud component does (deduplication on).
 - **The relation input**: a plain id, and `{}` for no match, as in the ActionsJS step.
-- **Downloading** over `wasi:http` from a step that also imports `betty-blocks-types` (tested in
-  `exchange-code-for-tokens` on its own), and from a file property URL.
-- How a **Map** arrives (expected: a JSON object string with the keys in entered order; a list of
-  `{ key, value }` is accepted too), and the Select values `auto` and `id`.
+- **Default mapping values** for checkbox, number and relation properties: if a Map value typed as
+  `true` or `4` arrives as text, the Data API may refuse it.
+- **Excel** files, and the Select value `id`.
 - **Size and time:** the file, its rows and the records are held in memory. No limit has been
   measured; try a large file and note the result here.
 

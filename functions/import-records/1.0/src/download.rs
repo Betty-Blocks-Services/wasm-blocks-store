@@ -25,11 +25,17 @@ pub fn check_url(url: &str) -> Result<&str, String> {
 /// characters, double quotes, angle and curly brackets, backslash, caret, backtick and pipe. A file
 /// URL can hold the file name as it is (`files/My import.csv`); a browser and the ActionsJS step's
 /// `fetch` encode it, `waki` refuses it ("invalid uri character"). `%` and the reserved characters
-/// (`/?#&=` and so on) are kept, so an already encoded URL does not change.
+/// (`/?#&=` and so on) are kept, so an already encoded URL does not change. A `%` that does not
+/// start an escape (`50% off.csv`) is encoded. A `#` or `?` in a file name cannot be told apart from
+/// a fragment or query, so it is kept.
 fn encode(url: &str) -> String {
+    let bytes = url.as_bytes();
     let mut encoded = String::with_capacity(url.len());
-    for byte in url.bytes() {
-        if byte.is_ascii_graphic() && !b"\"<>\\^`{|}".contains(&byte) {
+    for (index, &byte) in bytes.iter().enumerate() {
+        let escape = byte == b'%'
+            && bytes.get(index + 1).is_some_and(u8::is_ascii_hexdigit)
+            && bytes.get(index + 2).is_some_and(u8::is_ascii_hexdigit);
+        if byte.is_ascii_graphic() && !b"\"<>\\^`{|}".contains(&byte) && (byte != b'%' || escape) {
             encoded.push(byte as char);
         } else {
             encoded.push_str(&format!("%{byte:02X}"));
@@ -46,9 +52,13 @@ fn resolve(from: &str, location: &str) -> String {
         return location.to_string();
     }
     let (scheme, rest) = from.split_once("://").unwrap_or(("https", from));
-    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let host = rest.split('/').next().unwrap_or(rest);
     if let Some(path) = location.strip_prefix("//") {
         return format!("{scheme}://{path}");
+    }
+    if location.starts_with('?') {
+        return format!("{scheme}://{rest}{location}");
     }
     if location.starts_with('/') {
         return format!("{scheme}://{host}{location}");
@@ -120,6 +130,11 @@ mod tests {
             encode("https://x.nl/a%20b.csv?x=1&y=[2]#z"),
             "https://x.nl/a%20b.csv?x=1&y=[2]#z"
         );
+        assert_eq!(
+            encode("https://x.nl/50% off.csv"),
+            "https://x.nl/50%25%20off.csv"
+        );
+        assert_eq!(encode("https://x.nl/a%2"), "https://x.nl/a%252");
     }
 
     #[test]
@@ -130,5 +145,10 @@ mod tests {
         assert_eq!(resolve(from, "//c.nl/f"), "https://c.nl/f");
         assert_eq!(resolve(from, "next.csv"), "https://a.nl/dir/next.csv");
         assert_eq!(resolve("https://a.nl", "f"), "https://a.nl/f");
+        assert_eq!(
+            resolve("https://a.nl/dl?next=/x/y", "f.csv"),
+            "https://a.nl/f.csv"
+        );
+        assert_eq!(resolve(from, "?x=2"), "https://a.nl/dir/file.csv?x=2");
     }
 }

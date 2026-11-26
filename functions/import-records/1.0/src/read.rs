@@ -149,7 +149,7 @@ pub fn read_csv(bytes: &[u8], delimiter: Option<u8>) -> Result<Table, String> {
         let cells = record
             .iter()
             .map(|field| {
-                if field.is_empty() {
+                if field.trim().is_empty() {
                     Cell::Empty
                 } else {
                     Cell::Text(field.to_string())
@@ -202,7 +202,7 @@ pub fn read_excel(bytes: Vec<u8>) -> Result<Table, String> {
 fn cell_of(data: &Data) -> Cell {
     match data {
         Data::Empty => Cell::Empty,
-        Data::String(text) if text.is_empty() => Cell::Empty,
+        Data::String(text) if text.trim().is_empty() => Cell::Empty,
         Data::String(text) => Cell::Text(text.clone()),
         Data::Int(number) => Cell::Integer(*number),
         Data::Float(number) => Cell::Number(*number),
@@ -312,6 +312,12 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_value_of_only_spaces_is_empty() {
+        let table = read_csv(b"Name;Age\nAnn; \n", None).unwrap();
+        assert_eq!(table.rows[0].cells[1], Cell::Empty);
     }
 
     #[test]

@@ -318,8 +318,8 @@ fn has_date_fields(tokens: &[Token]) -> bool {
     has('y') && has('M') && has('d')
 }
 
-/// ISO-like text (`2024-01-31`, `2024-01-31 13:45`, `2024-01-31T13:45:00`, `13:45`), accepted in
-/// a date column next to its format.
+/// ISO-like text (`2024-01-31`, `2024-01-31 13:45`, `2024-01-31T13:45:00`), accepted in a date
+/// column next to its format.
 fn parse_iso(text: &str) -> Option<NaiveDateTime> {
     let text = text.trim();
     for format in [
@@ -394,8 +394,10 @@ fn convert_date(
         Cell::Bool(value) => return Err(format!("{value} is not a date")),
         Cell::Empty | Cell::Error(_) => unreachable!("handled by convert"),
     };
-    // Excel keeps times as fractions of a day, which can land a millisecond off.
-    let datetime = if datetime.nanosecond() >= 999_000_000 {
+    // Excel keeps times as fractions of a day, which can land a millisecond off. Typed text is
+    // taken as it is.
+    let from_excel = !matches!(cell, Cell::Text(_));
+    let datetime = if from_excel && datetime.nanosecond() >= 999_000_000 {
         datetime + chrono::Duration::milliseconds(1)
     } else {
         datetime
@@ -571,10 +573,42 @@ pub fn match_key(value: &Value, kind: MatchKind) -> Option<String> {
     };
     match kind {
         MatchKind::Text => Some(text),
-        MatchKind::Number | MatchKind::Decimal => {
-            Some(text.trim().parse::<f64>().map(number_text).unwrap_or(text))
-        }
+        MatchKind::Number | MatchKind::Decimal => Some(
+            plain_number(text.trim())
+                .or_else(|| text.trim().parse::<f64>().ok().map(number_text))
+                .unwrap_or(text),
+        ),
     }
+}
+
+/// `text` as a plain decimal number written the shortest way (`+012.50` is `12.5`, `-0.0` is `0`),
+/// or `None` when it is not one (`1e3`). Works on the digits, so long numbers keep every digit.
+fn plain_number(text: &str) -> Option<String> {
+    let (negative, digits) = match text.as_bytes().first()? {
+        b'-' => (true, &text[1..]),
+        b'+' => (false, &text[1..]),
+        _ => (false, text),
+    };
+    let (whole, fraction) = digits.split_once('.').unwrap_or((digits, ""));
+    if whole.is_empty() && fraction.is_empty()
+        || !whole
+            .bytes()
+            .chain(fraction.bytes())
+            .all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let whole = whole.trim_start_matches('0');
+    let fraction = fraction.trim_end_matches('0');
+    let mut number = String::from(if whole.is_empty() { "0" } else { whole });
+    if !fraction.is_empty() {
+        number.push('.');
+        number.push_str(fraction);
+    }
+    if negative && number != "0" {
+        number.insert(0, '-');
+    }
+    Some(number)
 }
 
 #[cfg(test)]
@@ -592,6 +626,35 @@ mod tests {
 
     fn convert_text(value: &str, spec: &str) -> Result<Value, String> {
         convert(&text(value), Some(&format(spec)))
+    }
+
+    #[test]
+    fn numeric_keys_keep_every_digit() {
+        let key = |value: Value| match_key(&value, MatchKind::Decimal).unwrap();
+        assert_eq!(key(json!("+012.50")), "12.5");
+        assert_eq!(key(json!(12)), "12");
+        assert_eq!(key(json!("12.0")), "12");
+        assert_eq!(key(json!("-0.0")), "0");
+        assert_eq!(key(json!("1e3")), "1000");
+        assert_ne!(
+            key(json!("12345678901234567.25")),
+            key(json!("12345678901234567.00"))
+        );
+        assert_eq!(
+            match_key(&json!("9007199254740993"), MatchKind::Number).unwrap(),
+            "9007199254740993"
+        );
+    }
+
+    #[test]
+    fn typed_milliseconds_are_not_rounded() {
+        assert_eq!(
+            convert_text(
+                "31-12-2024 23:59:59.999",
+                "Datetime, dd-MM-yyyy HH:mm:ss.SSS"
+            ),
+            Ok(json!("2024-12-31 23:59:59"))
+        );
     }
 
     #[test]

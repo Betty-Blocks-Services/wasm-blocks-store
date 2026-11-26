@@ -8,6 +8,22 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## A `createMany<Model>` mutation with an `$input` variable works through the host `request` function (2026-11-26)
+
+**Fact:** `import-records` 1.0 writes with `request(helper-context, "mutation { createMany<Model>(input: $input) { id } }", "{\"input\": [...]}")`: the `betty-blocks-types:data-api@3.0.0` host function with the `helper-context`, and the records as a GraphQL variable (`$input` is not declared in the document). On the canvas this created the records of an imported CSV. This qualifies the 2026-10-23 entry below, where a direct `updatePerson(id:, input: { ... })` mutation with the input inline and no variables was refused: a direct mutation is not refused as such. Which difference matters (the bulk mutation, or the input as a variable) is not isolated.
+
+**How found:** the first canvas run of `import-records` on a test app.
+
+**Why it matters:** a custom step can write records through `request` and the `helper-context`, without the native steps' `borrow<data-api>` parameter.
+
+**Not tested yet:** `upsertMany<Model>` through the same route (deduplication in `import-records`).
+
+**Where this lands:** the crash course's section on the Data API from a step, and the `data-api-query` README's note on mutations.
+
+**Status:** confirmed on a canvas for `createMany`, 2026-11-26.
+
+---
+
 ## `waki` refuses a URL with a space ("invalid uri character"); Betty Blocks file URLs can have one (2026-11-26)
 
 **Fact:** a file property's asset URL holds the file name as it was uploaded, so it can contain spaces (`.../assets/files/CSV webuser data import`). `waki` 0.5.1's `Client::new().get(url).send()` fails on it with the error `invalid uri character` before any request is made. The ActionsJS import step downloaded the same URL fine, because `fetch` percent-encodes it. `import-records` now percent-encodes spaces, non-ASCII and the other characters a URI may not contain before each request, and keeps `%` and the reserved characters, so an encoded URL does not change.
@@ -18,7 +34,7 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 **Where this lands:** the crash course's section on HTTP calls from a step.
 
-**Status:** confirmed: reproduced in the test harness with the error from the canvas, 2026-11-26. The fix is not yet run on a canvas.
+**Status:** confirmed: reproduced in the test harness with the error from the canvas, and the fix confirmed on the canvas, 2026-11-26.
 
 ---
 
@@ -72,7 +88,7 @@ So the Data API does not decode backslash escapes in a string and does not valid
 
 **Where this lands:** the `data-api-query` README, "Behaviour".
 
-**Status:** both outcomes seen firsthand on the canvas on 2026-10-23.
+**Status:** both outcomes seen firsthand on the canvas on 2026-10-23. Qualified on 2026-11-26: a `createMany<Model>` mutation with its input as a variable did work through `request` (see that entry above).
 
 ---
 

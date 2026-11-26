@@ -211,7 +211,8 @@ pub fn run(table: &Table, params: &Params, request: Request) -> Result<Summary, 
             .filter(|c| c.required && index_of(&c.column).is_none())
             .map(|c| c.column.as_str())
             .collect();
-        missing.dedup();
+        let mut seen = std::collections::HashSet::new();
+        missing.retain(|column| seen.insert(*column));
         if !missing.is_empty() {
             return Err(format!(
                 "Required columns are missing from the file: {}. Nothing was imported",
@@ -818,6 +819,19 @@ mod tests {
             )
             .unwrap_err(),
             "Required columns are missing from the file: Email. Nothing was imported"
+        );
+        // A column required in both mappings is named once.
+        let mut both = options(r#"{"Email*": "email", "Name*": "name"}"#);
+        both.validate_required = true;
+        both.update_mapping = r#"{"Email*": "email"}"#;
+        assert_eq!(
+            run_with(
+                &table(&["Age"], &[&["3"]]),
+                &Params::new(both).unwrap(),
+                &mut Mock::new(vec![])
+            )
+            .unwrap_err(),
+            "Required columns are missing from the file: Email, Name. Nothing was imported"
         );
         // The column may also be named with the * in the file.
         run_with(
