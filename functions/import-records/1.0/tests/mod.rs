@@ -35,7 +35,8 @@ struct Run {
     requests: Vec<(String, Value)>,
 }
 
-/// Imports `file` (served with HTTP `status`) into Person, deduplicating on Email. The Data API has
+/// Imports `file` (served with HTTP `status`, from a URL with spaces, as a file property URL can
+/// have) into Person, deduplicating on Email. The Data API has
 /// one Person, with the email `ann@x.nl` and id 41.
 fn run(status: u16, file: &'static str, deduplicate: bool) -> Run {
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -84,7 +85,7 @@ fn run(status: u16, file: &'static str, deduplicate: bool) -> Run {
         .call_import_records(
             &mut component.store,
             &helper_context(),
-            &String::from("https://files.example/people.csv"),
+            &String::from("https://files.example/files/people import"),
             FileType::Csv,
             Delimiter::Auto,
             &BettyModel {

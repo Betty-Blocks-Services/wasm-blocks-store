@@ -8,6 +8,20 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## `waki` refuses a URL with a space ("invalid uri character"); Betty Blocks file URLs can have one (2026-11-26)
+
+**Fact:** a file property's asset URL holds the file name as it was uploaded, so it can contain spaces (`.../assets/files/CSV webuser data import`). `waki` 0.5.1's `Client::new().get(url).send()` fails on it with the error `invalid uri character` before any request is made. The ActionsJS import step downloaded the same URL fine, because `fetch` percent-encodes it. `import-records` now percent-encodes spaces, non-ASCII and the other characters a URI may not contain before each request, and keeps `%` and the reserved characters, so an encoded URL does not change.
+
+**How found:** the first canvas run of `import-records` with an uploaded CSV failed with `Downloading the import file failed: invalid uri character`. With a space in its URL, the component test in `import-records/1.0/tests/mod.rs` gives the same error without the encoding and passes with it.
+
+**Why it matters:** any step that passes a URL from the app to `waki` (file properties, user input) needs to encode it first, or it fails on file names with spaces or accents.
+
+**Where this lands:** the crash course's section on HTTP calls from a step.
+
+**Status:** confirmed: reproduced in the test harness with the error from the canvas, 2026-11-26. The fix is not yet run on a canvas.
+
+---
+
 ## A `waki` GET works against `wasmtime-testing-helper`'s stubbed HTTP handler, also next to `betty-blocks-types` imports (2026-11-26)
 
 **Fact:** `import-records` 1.0 downloads its file with `waki` (`Client::new().get(url).send()`, then `body()`), with the `wit-bindgen 0.42` / `wasi 0.14.2` / `waki 0.5.1` trio and the `with:` remap of `exchange-code-for-tokens`. Its world imports `wasi:http/outgoing-handler@0.2.6` next to `betty-blocks-types:data-api@3.0.0` and `types@3.0.0`. In `tests/mod.rs` the built component runs with `harness.stub_http_handler(Ok(hyper::Response::builder().status(..).body(..)))` and `harness.mock(DATA_API, "request", ..)` together: the stubbed body (and a stubbed 403) reaches the component, and the Data API mock sees the requests that follow. `exchange-code-for-tokens/1.0/tests/mod.rs` records a `StreamError::Closed` for its `waki` POST in the same harness; a GET without a request body does not hit it.

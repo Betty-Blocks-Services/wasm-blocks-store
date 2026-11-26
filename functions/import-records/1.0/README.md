@@ -14,7 +14,7 @@ show.
 
 | Option | Notes |
 |---|---|
-| URL to the import file | An `https://` (or `http://`) URL. Up to 5 redirects are followed |
+| URL to the import file | An `https://` (or `http://`) URL. Spaces and other characters a URL may not contain (as in a file property URL with the file name in it) are percent-encoded. Up to 5 redirects are followed |
 | Import file type | CSV or Excel (values `csv`, `excel`, WIT `enum file-type`). Excel reads the first sheet of an xlsx, xlsm, xls or ods file |
 | Delimiter | Detect, `;`, `,`, `\|` or tab (values `auto`, `semicolon`, `comma`, `pipe`, `tab`, WIT `enum delimiter`). Detect counts each one in the header row and picks the most common one (`,` on a tie or when there is none). CSV only |
 | Import model | The model the records go into |

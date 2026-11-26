@@ -21,6 +21,23 @@ pub fn check_url(url: &str) -> Result<&str, String> {
     Ok(url)
 }
 
+/// `url` with the characters a URI may not contain percent-encoded: spaces, non-ASCII, control
+/// characters, double quotes, angle and curly brackets, backslash, caret, backtick and pipe. A file
+/// URL can hold the file name as it is (`files/My import.csv`); a browser and the ActionsJS step's
+/// `fetch` encode it, `waki` refuses it ("invalid uri character"). `%` and the reserved characters
+/// (`/?#&=` and so on) are kept, so an already encoded URL does not change.
+fn encode(url: &str) -> String {
+    let mut encoded = String::with_capacity(url.len());
+    for byte in url.bytes() {
+        if byte.is_ascii_graphic() && !b"\"<>\\^`{|}".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 /// The URL a redirect points to: `location` as it is when it is absolute, else resolved against
 /// the scheme and host of `from`.
 fn resolve(from: &str, location: &str) -> String {
@@ -47,7 +64,7 @@ fn resolve(from: &str, location: &str) -> String {
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut current = url.to_string();
     for _ in 0..=MAX_REDIRECTS {
-        let response = Client::new().get(&current).send().map_err(|error| {
+        let response = Client::new().get(&encode(&current)).send().map_err(|error| {
             format!(
                 "Downloading the import file failed: {error}. Check that the URL is correct and reachable"
             )
@@ -90,6 +107,19 @@ mod tests {
         assert!(check_url("").is_err());
         assert!(check_url("ftp://x").is_err());
         assert!(check_url("/public/a.csv").is_err());
+    }
+
+    #[test]
+    fn characters_a_uri_may_not_contain_are_encoded() {
+        assert_eq!(
+            encode("https://x.nl/files/CSV import special characters"),
+            "https://x.nl/files/CSV%20import%20special%20characters"
+        );
+        assert_eq!(encode("https://x.nl/é.csv"), "https://x.nl/%C3%A9.csv");
+        assert_eq!(
+            encode("https://x.nl/a%20b.csv?x=1&y=[2]#z"),
+            "https://x.nl/a%20b.csv?x=1&y=[2]#z"
+        );
     }
 
     #[test]
