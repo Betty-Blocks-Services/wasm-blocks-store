@@ -8,6 +8,48 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## `createMany<Model>` and `upsertMany<Model>` mutations with an `$input` variable work through the host `request` function (2026-11-26)
+
+**Fact:** `import-records` 1.0 writes with `request(helper-context, "mutation { createMany<Model>(input: $input) { id } }", "{\"input\": [...]}")`: the `betty-blocks-types:data-api@3.0.0` host function with the `helper-context`, and the records as a GraphQL variable (`$input` is not declared in the document). On the canvas this created the records of an imported CSV, and with deduplication on, `upsertMany<Model>(input: $input)` (each input with the existing `id`) updated the matching records. The duplicate lookup, `query($where: <Model>FilterInput) { all<Model>(where: $where, skip:, take: 200) { ... } }` with `where` as a variable, worked too. This qualifies the 2026-10-23 entry below, where a direct `updatePerson(id:, input: { ... })` mutation with the input inline and no variables was refused: a direct mutation is not refused as such. Which difference matters (the bulk mutation, or the input as a variable) is not isolated.
+
+**How found:** the first canvas run of `import-records` on a test app.
+
+**Why it matters:** a custom step can write records through `request` and the `helper-context`, without the native steps' `borrow<data-api>` parameter.
+
+**Where this lands:** the crash course's section on the Data API from a step, and the `data-api-query` README's note on mutations.
+
+**Status:** confirmed on a canvas for `createMany`, `upsertMany` and the filtered lookup, 2026-11-26.
+
+---
+
+## `waki` refuses a URL with a space ("invalid uri character"); Betty Blocks file URLs can have one (2026-11-26)
+
+**Fact:** a file property's asset URL holds the file name as it was uploaded, so it can contain spaces (`.../assets/files/CSV webuser data import`). `waki` 0.5.1's `Client::new().get(url).send()` fails on it with the error `invalid uri character` before any request is made. The ActionsJS import step downloaded the same URL fine, because `fetch` percent-encodes it. `import-records` now percent-encodes spaces, non-ASCII and the other characters a URI may not contain before each request, and keeps `%` and the reserved characters, so an encoded URL does not change.
+
+**How found:** the first canvas run of `import-records` with an uploaded CSV failed with `Downloading the import file failed: invalid uri character`. With a space in its URL, the component test in `import-records/1.0/tests/mod.rs` gives the same error without the encoding and passes with it.
+
+**Why it matters:** any step that passes a URL from the app to `waki` (file properties, user input) needs to encode it first, or it fails on file names with spaces or accents.
+
+**Where this lands:** the crash course's section on HTTP calls from a step.
+
+**Status:** confirmed: reproduced in the test harness with the error from the canvas, and the fix confirmed on the canvas, 2026-11-26.
+
+---
+
+## A `waki` GET works against `wasmtime-testing-helper`'s stubbed HTTP handler, also next to `betty-blocks-types` imports (2026-11-26)
+
+**Fact:** `import-records` 1.0 downloads its file with `waki` (`Client::new().get(url).send()`, then `body()`), with the `wit-bindgen 0.42` / `wasi 0.14.2` / `waki 0.5.1` trio and the `with:` remap of `exchange-code-for-tokens`. Its world imports `wasi:http/outgoing-handler@0.2.6` next to `betty-blocks-types:data-api@3.0.0` and `types@3.0.0`. In `tests/mod.rs` the built component runs with `harness.stub_http_handler(Ok(hyper::Response::builder().status(..).body(..)))` and `harness.mock(DATA_API, "request", ..)` together: the stubbed body (and a stubbed 403) reaches the component, and the Data API mock sees the requests that follow. `exchange-code-for-tokens/1.0/tests/mod.rs` records a `StreamError::Closed` for its `waki` POST in the same harness; a GET without a request body does not hit it.
+
+**How found:** writing the component tests of `import-records` (3 tests, passing with `cargo +1.94 test -p import-records`).
+
+**Why it matters:** a step that downloads something can be tested end to end without a network. The POST failure is probably about sending a request body, not about `waki` and the harness in general (not investigated).
+
+**Where this lands:** the crash course's section on testing a step that makes HTTP calls.
+
+**Status:** confirmed for GET in the test harness, 2026-11-26. Not yet run on a canvas.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:
@@ -44,7 +86,7 @@ So the Data API does not decode backslash escapes in a string and does not valid
 
 **Where this lands:** the `data-api-query` README, "Behaviour".
 
-**Status:** both outcomes seen firsthand on the canvas on 2026-10-23.
+**Status:** both outcomes seen firsthand on the canvas on 2026-10-23. Qualified on 2026-11-26: a `createMany<Model>` mutation with its input as a variable did work through `request` (see that entry above).
 
 ---
 

@@ -1,0 +1,26 @@
+[package]
+name = "import-records"
+version = "1.0.0"
+edition.workspace = true
+build = "../../../build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+calamine = { version = "0.38", default-features = false, features = ["chrono"] }
+chrono = { version = "0.4.45", default-features = false, features = ["alloc"] }
+csv = "1.4"
+encoding_rs = "0.8.35"
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Pinned independently of the workspace's wit-bindgen (0.58), like exchange-code-for-tokens: `waki`
+# is built against the `wasi` crate's own `wasi:http` bindings, so this crate's bindings must reuse
+# those types (the `with:` remap in src/lib.rs), and the three versions are pinned together.
+wit-bindgen = "0.42.0"
+wasi = "0.14.2"
+waki = "0.5.1"
+
+[dev-dependencies]
+wasmtime-testing-helper = { workspace = true, features = ["http"] }
+rust_xlsxwriter = { version = "0.103.0", default-features = false }
