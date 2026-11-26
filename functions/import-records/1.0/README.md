@@ -7,7 +7,8 @@ the Data API: new records with `createMany<Model>`, existing records (with dedup
 
 **Status:** built for `wasm32-wasip2`, unit-tested and component-tested (`cargo test -p
 import-records`). **Run on a canvas** (2026-11-26): a CSV from a file property URL was downloaded
-and imported, creating records, and the Result text reached the action. See "Not tested yet" for
+and imported, creating records, and the Result text reached the action. With deduplication on, existing
+records were updated. See "Not tested yet" for
 what that run did not cover.
 
 ## Options
@@ -104,11 +105,11 @@ what that run did not cover.
 ## Not tested yet
 
 Confirmed in the first canvas run: downloading over `wasi:http` from a file property URL (once
-spaces in it were encoded), the Import mapping as a Map, `createMany<Model>(input: $input)` through
-the host `request` function with the `helper-context`, and the Text Result. Still to check:
+spaces in it were encoded), the Import mapping as a Map, `createMany<Model>(input: $input)` and
+`upsertMany<Model>(input: $input)` through the host `request` function with the `helper-context`,
+the duplicate lookup query (which declares `$where: <Model>FilterInput`), and the Text Result.
+Still to check:
 
-- **Updates**: `upsertMany<Model>(input: $input)` and the lookup query, which declares
-  `$where: <Model>FilterInput` as the platform's crud component does (deduplication on).
 - **The relation input**: a plain id, and `{}` for no match, as in the ActionsJS step.
 - **Default mapping values** for checkbox, number and relation properties: if a Map value typed as
   `true` or `4` arrives as text, the Data API may refuse it.

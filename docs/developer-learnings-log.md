@@ -8,19 +8,17 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
-## A `createMany<Model>` mutation with an `$input` variable works through the host `request` function (2026-11-26)
+## `createMany<Model>` and `upsertMany<Model>` mutations with an `$input` variable work through the host `request` function (2026-11-26)
 
-**Fact:** `import-records` 1.0 writes with `request(helper-context, "mutation { createMany<Model>(input: $input) { id } }", "{\"input\": [...]}")`: the `betty-blocks-types:data-api@3.0.0` host function with the `helper-context`, and the records as a GraphQL variable (`$input` is not declared in the document). On the canvas this created the records of an imported CSV. This qualifies the 2026-10-23 entry below, where a direct `updatePerson(id:, input: { ... })` mutation with the input inline and no variables was refused: a direct mutation is not refused as such. Which difference matters (the bulk mutation, or the input as a variable) is not isolated.
+**Fact:** `import-records` 1.0 writes with `request(helper-context, "mutation { createMany<Model>(input: $input) { id } }", "{\"input\": [...]}")`: the `betty-blocks-types:data-api@3.0.0` host function with the `helper-context`, and the records as a GraphQL variable (`$input` is not declared in the document). On the canvas this created the records of an imported CSV, and with deduplication on, `upsertMany<Model>(input: $input)` (each input with the existing `id`) updated the matching records. The duplicate lookup, `query($where: <Model>FilterInput) { all<Model>(where: $where, skip:, take: 200) { ... } }` with `where` as a variable, worked too. This qualifies the 2026-10-23 entry below, where a direct `updatePerson(id:, input: { ... })` mutation with the input inline and no variables was refused: a direct mutation is not refused as such. Which difference matters (the bulk mutation, or the input as a variable) is not isolated.
 
 **How found:** the first canvas run of `import-records` on a test app.
 
 **Why it matters:** a custom step can write records through `request` and the `helper-context`, without the native steps' `borrow<data-api>` parameter.
 
-**Not tested yet:** `upsertMany<Model>` through the same route (deduplication in `import-records`).
-
 **Where this lands:** the crash course's section on the Data API from a step, and the `data-api-query` README's note on mutations.
 
-**Status:** confirmed on a canvas for `createMany`, 2026-11-26.
+**Status:** confirmed on a canvas for `createMany`, `upsertMany` and the filtered lookup, 2026-11-26.
 
 ---
 
