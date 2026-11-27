@@ -2,11 +2,12 @@
 
 Exports the records of a model to a CSV or Excel (XLSX) file, stores the file through the host
 `betty-blocks-types:upload-file@4.0.0` interface and returns the file reference. A Rust port of the
-ActionsJS step `export-to-csv` 3.4 (Betty-Blocks-Services/rob-block-store-functions).
+ActionsJS step `export-to-csv` 3.4.
 
 **Status:** built for `wasm32-wasip2`, unit- and component-tested (`cargo test -p export-records`)
-and run successfully on a canvas (2026-11-24). The **Escape formulas** option and the paging fix
-came after that canvas run (review of PR #21) and have not been run on a canvas yet. The points
+and run successfully on a canvas (2026-11-24). A later run exported 50,000 records in 32 seconds (see
+"Performance"). The **Escape formulas** option, the paging changes and the review fixes of PR #21 have
+not all been run on a canvas yet. The points
 under "Not tested yet" are still open.
 
 > **After configuring:** add a Create Record or Update Record step on the model chosen as
@@ -25,23 +26,27 @@ under "Not tested yet" are still open.
 | Sort order | Ascending or descending (values `ASC`/`DESC`, WIT `enum sort-order`) |
 | Delimiter | `;` `,` `\|` tab or space (values `semicolon`, `comma`, `pipe`, `tab`, `space`, WIT `enum delimiter`); default `,`. CSV only |
 | Model to save file into / Property to save file into | Where the file reference is meant to go (the upload needs them) |
-| Filename | Without extension: `.csv` or `.xlsx` is added (a name that already ends in it does not get it twice). Empty means `export` |
+| Filename | Without extension: `.csv` or `.xlsx` is added (a name that already ends in it does not get it twice). Empty means `export`. `/`, `\` and control characters become `_` |
 | Property mapping | KEY = column header, VALUE = database name (`created_at`) or `relation.property` for a relation. For a has-many or has-and-belongs-to-many relation (`departments.description`) the values of all related records are written in one cell, one per line. Columns follow the order of the map |
 | Format mapping for export columns | KEY = column header, VALUE = `Date\|<format>` (also `Datetime\|` and `Time\|`), or `Decimal\|<separator>` / `Price\|<separator>` |
 | Use BOM | CSV only; default on |
-| Escape formulas | CSV only; default on. Puts a `'` in front of text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet program shows it as text instead of running it as a formula (CSV injection). Column headers are escaped the same way. A sign followed by only digits, spaces, `.` and `,` (and maybe a closing `%`) is left alone: `-12,5`, `+31 6 1234 5678`, `-5%`. Other text that starts with a sign does get the `'`, e.g. `- none -` |
+| Escape formulas | CSV only; default on. Puts a `'` in front of text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet does not run it as a formula (CSV injection). The `'` stays visible in the cell and is part of the value, also for a program that reads the CSV: turn the option off for a file that is not opened in a spreadsheet. Column headers are escaped the same way. A sign followed by only digits, spaces, `.` and `,` (and maybe a closing `%`) is left alone: `-12,5`, `+31 6 1234 5678`, `-5%`. Other text that starts with a sign does get the `'`, e.g. `- none -` |
 | As | The file reference (Text) |
 
 ## Behaviour
 
-- **All matching records are exported**, asked for 200 per request until `totalCount` is reached.
-  A page with fewer records does not end the export (the Data API may cap pages lower); only reaching
-  `totalCount` does. If a page comes back empty before that, the step fails rather than storing an
+- **All matching records are exported**, asked for 5000 per request until `totalCount` is reached.
+  If a request with 5000 fails (a `take` the Data API does not accept, or a query that takes too long),
+  that page is asked again with 200 and the export continues with 200 per request. A page with fewer
+  records does not end the export (the Data API may cap pages lower); only reaching `totalCount` does.
+  A `totalCount` that is not a whole number fails the step. If a page comes back empty before that, the step fails rather than storing an
   incomplete file. Every page is one request towards the Data API rate limit.
 - **The records are always sorted**, by `id` when no sort property is chosen, so paging cannot export a
-  record twice or skip one. With a sort property that is not unique this can still happen, as in the
-  ActionsJS step. The step sends one sort field; whether the Data API accepts a second one as a
-  tie-breaker has not been checked. The option's info asks for a property with unique values.
+  record twice or skip one. With a sort property that is not unique the order of equal values can differ
+  between requests. The step always selects `id` and fails with a clear message when a record comes back
+  on two pages, instead of writing a file with duplicates and gaps (the ActionsJS step wrote it). The
+  step sends one sort field; whether the Data API accepts a second one as a tie-breaker has not been
+  checked. The option's info asks for a property with unique values.
 - **CSV** is written like the `export-to-csv` 0.2 package the ActionsJS step used: `\r\n` after every
   line (the last one too), text in double quotes with `"` doubled, `TRUE`/`FALSE` for yes/no values,
   numbers without quotes, and an empty value as `""`.
@@ -113,9 +118,19 @@ Run on a canvas, but not checked separately:
   in the order they were entered. The step reads the keys in the order of the JSON text and also accepts
   a list of `{ "key", "value" }`;
 - the format of **datetime values** from the Data API (offsets are converted to UTC);
-- the largest export that fits: the records, the file and its base64 are all held in memory, so a large
-  export can run out of memory. There is no cap yet because no limit has been measured; run a large
-  export on a real app and put the result here (or add a cap) before relying on it for big models.
+- the largest export that fits: the records, the file and its base64 are all held in memory, so a very
+  large export can run out of memory. 50,000 records worked (see "Performance"); there is no cap
+  because no limit has been found yet.
+
+## Performance
+
+One canvas run exported 50,000 records in 32 seconds with 200 records per request (250 requests). A step
+started from the front end is answered after about a minute and keeps running for at most 10 minutes (as
+reported by the platform team, not tested here). The step now asks for 5000 records per request, which is
+reported to be accepted by the Data API but is not verified: the 2026-10-08 log entry measured a maximum
+of 200. If 5000 is refused, or a query with 5000 records and many relations takes longer than the 5 s
+query timeout, the export falls back to 200 per request, as fast as before. Measure again on a canvas and
+put the result here.
 
 ## Tests
 

@@ -8,11 +8,27 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## `export-records` took 32 seconds for 50,000 records at 200 per request; the step now asks for 5000 and falls back to 200 (2026-11-27)
+
+**Fact:** a canvas run of `export-records` 1.0 exporting 50,000 records took 32 seconds, which is 250 Data API requests of 200 records. The step now asks for 5000 records per request (`PAGE_SIZE`) and, when a request fails, repeats that page with 200 (`FALLBACK_PAGE_SIZE`) and carries on with 200.
+
+**How found:** a timing run on a test app; the new page size follows a report that the Data API accepts a `take` of up to 5000 now.
+
+**Why it matters:** the earlier entry "The Data API accepts a `take` of at most 200" (2026-10-08) measured a maximum of 200, and a step that asks for more would fail on every export if that were still true. The fallback keeps the step working either way and also covers a query that exceeds the 5 s query timeout with 5000 records and many nested relations. For a step started from the front end, the platform team reports an answer after about a minute while the step runs on for at most 10 minutes (not tested here).
+
+**Not tested:** whether a `take` of 5000 is accepted today, how long an export of 50,000 records takes with it, and whether a wide selection with has-many relations stays under the query timeout at 5000.
+
+**Status:** the 50,000-record timing was measured. The page size of 5000 is not verified; the fallback is covered by unit tests only.
+
+**Where it should land:** the Data API limits section of the crash course, next to the `take` maximum, once the new limit is confirmed.
+
+---
+
 ## A Select option can feed a WIT `enum` parameter, and `upload-file@4.0.0` is live (2026-11-24)
 
 **Fact:** `export-records` 1.0 has three Select options (`file-type`, `sort-order`, `delimiter`) whose WIT parameters are `enum`s, with each Select `value` equal to an enum case name (`csv`, `ASC`, `semicolon`). Published with `bb functions publish` and run on a canvas, the step accepted the chosen values as enum cases: the platform maps a Select value onto the enum case with the same name, the same way the native HTTP step's `betty-http-method` enum works. The same run stored its file through `betty-blocks-types:upload-file/upload-file@4.0.0` (the step's only upload import), so `@4.0.0` is live on the platform, not only at `wasm-base-components` HEAD.
 
-**How found:** Rob, 2026-11-24, canvas run of `export-records` 1.0 (PR #21) on a test app.
+**How found:** 2026-11-24, canvas run of `export-records` 1.0 (PR #21) on a test app.
 
 **Why it matters:** an enum is a better WIT type for a Select than `string`: the component no longer has to reject unknown text, and `bb functions validate`/`just step-lint` can check the values. A case name must be kebab-case words (each all lowercase or all UPPERCASE, so `ASC` is valid) and cannot be a symbol, so a delimiter needs names like `comma`, not `,`. For new steps that upload a file, pin `upload-file@4.0.0` (with `data-api@3.0.0`/`types@3.0.0`); this answers the 2026-10-07 drift entry below. Belongs in the crash course's option-types section.
 

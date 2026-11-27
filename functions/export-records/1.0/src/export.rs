@@ -8,8 +8,15 @@ use crate::filter;
 use crate::format::{self, Format};
 use crate::mapping::{self, Column};
 
-/// The most records the Data API returns per request.
-pub const PAGE_SIZE: usize = 200;
+/// The records asked for per request. The Data API accepted at most 200 per request when this was
+/// first measured (docs/developer-learnings-log.md, 2026-10-08) and is reported to take up to
+/// 5000 now: a bigger page means far fewer requests. When a request fails with this many, the
+/// export carries on with `FALLBACK_PAGE_SIZE`.
+pub const PAGE_SIZE: usize = 5000;
+
+/// The page size that is known to work: used after a request with `PAGE_SIZE` records failed (a
+/// `take` that is too high, or a query that takes too long with so many records).
+pub const FALLBACK_PAGE_SIZE: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FileType {
@@ -44,14 +51,15 @@ pub struct Params<'a> {
     pub escape_formulas: bool,
 }
 
-/// The query for one page.
-pub fn build_query(params: &Params, skip: usize) -> Result<(String, String), String> {
+/// The query for one page of `take` records.
+pub fn build_query(params: &Params, skip: usize, take: usize) -> Result<(String, String), String> {
     let model = params.model.trim();
     if !mapping::is_name(model) {
         return Err(String::from("Select the model to export records from"));
     }
     let columns = mapping::columns(params.mapping)?;
-    let selection = mapping::selection(&columns);
+    // `id` is always selected: it is how a record that comes back on two pages is noticed.
+    let selection = format!("id {}", mapping::selection(&columns));
 
     let filter = filter::build(params.filter, params.variables)?;
     let order = match params.sort_order.trim().to_uppercase().as_str() {
@@ -77,7 +85,7 @@ pub fn build_query(params: &Params, skip: usize) -> Result<(String, String), Str
 
     let field = format!("all{model}");
     let query = format!(
-        "query {{ {field}(where: {{ {filter}\n}}, sort: {{ field: {sort_field}, order: {order} }}, skip: {skip}, take: {PAGE_SIZE}) {{ results {{ {selection} }} totalCount }} }}"
+        "query {{ {field}(where: {{ {filter}\n}}, sort: {{ field: {sort_field}, order: {order} }}, skip: {skip}, take: {take}) {{ results {{ {selection} }} totalCount }} }}"
     );
     Ok((query, field))
 }
@@ -106,6 +114,29 @@ fn host_error_message(raw: &str) -> String {
         .unwrap_or_else(|| raw.to_string())
 }
 
+/// The `totalCount` of a response: a whole number of at least 0 (`250` or `250.0`). A missing or
+/// `null` count is `None`. Any other value is an error: reading it as missing would end the export
+/// at the first short page, which cuts it off when the Data API caps pages.
+fn read_total(value: Option<&Value>) -> Result<Option<u64>, String> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(number)) => {
+            let whole = number.as_u64().or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|float| *float >= 0.0 && float.fract() == 0.0 && *float < 1e15)
+                    .map(|float| float as u64)
+            });
+            whole.map(Some).ok_or_else(|| {
+                format!("The Data API returned a totalCount that is not a whole number: {number}")
+            })
+        }
+        Some(_) => Err(String::from(
+            "The Data API returned a totalCount that is not a number",
+        )),
+    }
+}
+
 /// The records of one page and the total count. A missing or `null` node or `results` is an
 /// error, not an empty page: it would otherwise give a header-only or cut-off file without a
 /// word. A real empty result is `results: []` with `totalCount: 0`.
@@ -124,7 +155,7 @@ fn read_page(response: &str, field: &str) -> Result<(Vec<Value>, Option<u64>), S
                 "The Data API returned no data for `{field}`: check the model and its permissions"
             )
         })?;
-    let total = node.get("totalCount").and_then(Value::as_u64);
+    let total = read_total(node.get("totalCount"))?;
     let records = match node.get_mut("results").map(Value::take) {
         Some(Value::Array(records)) => records,
         Some(Value::Null) | None => {
@@ -143,20 +174,36 @@ pub const XLSX_MAX_ROWS: u64 = 1_048_575;
 /// Fetches every matching record with `send`, a page at a time.
 ///
 /// It keeps asking until it has `totalCount` records or a page comes back empty, so a Data API
-/// that returns fewer than `PAGE_SIZE` records per page does not cut the export short. When the
-/// last page is empty while `totalCount` says more records exist, the step fails instead of
-/// writing an incomplete file. Only when the response has no `totalCount` does a page with fewer
-/// than `PAGE_SIZE` records end the export.
+/// that returns fewer records per page than asked does not cut the export short. When the last
+/// page is empty while `totalCount` says more records exist, the step fails instead of writing an
+/// incomplete file. Only when the response has no `totalCount` does a page with fewer records than
+/// asked end the export.
+///
+/// Pages are asked for with `PAGE_SIZE` records. If such a request fails, the page is asked again
+/// with `FALLBACK_PAGE_SIZE` and the export continues with that size. A record that comes back on
+/// two pages (equal values in the sort property, so the order differs between requests) fails the
+/// step: the file would have duplicates and miss records.
 pub fn fetch_all(
     params: &Params,
     mut send: impl FnMut(&str) -> Result<String, String>,
 ) -> Result<Vec<Value>, String> {
     validate(params)?;
-    let mut records = Vec::new();
+    let mut records: Vec<Value> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut page_size = PAGE_SIZE;
     loop {
-        let (query, field) = build_query(params, records.len())?;
-        let response = send(&query).map_err(|error| host_error_message(&error))?;
-        let (page, total) = read_page(&response, &field)?;
+        let (query, field) = build_query(params, records.len(), page_size)?;
+        let result = send(&query)
+            .map_err(|error| host_error_message(&error))
+            .and_then(|response| read_page(&response, &field));
+        let (page, total) = match result {
+            Ok(page) => page,
+            Err(_) if page_size > FALLBACK_PAGE_SIZE => {
+                page_size = FALLBACK_PAGE_SIZE;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if let Some(total) = total
             && params.file_type == FileType::Xlsx
             && total > XLSX_MAX_ROWS
@@ -167,6 +214,18 @@ pub fn fetch_all(
             ));
         }
         let received = page.len();
+        for record in &page {
+            if let Some(id) = record.get("id").filter(|id| !id.is_null())
+                && !seen.insert(id.to_string())
+            {
+                return Err(format!(
+                    "The record with id {id} came back on two pages, so the export would have \
+                     duplicates and miss records. The sort property has equal values (or records \
+                     changed during the export): sort by a property with unique values, or leave \
+                     the sort property empty to sort by id"
+                ));
+            }
+        }
         records.extend(page);
         let fetched = records.len() as u64;
         match total {
@@ -178,7 +237,7 @@ pub fn fetch_all(
                 ));
             }
             Some(_) => {}
-            None if received < PAGE_SIZE => return Ok(records),
+            None if received < page_size => return Ok(records),
             None => {}
         }
     }
@@ -227,7 +286,7 @@ fn column_formats(
 /// Checks the options that do not need the Data API (the model, filter, sort, mapping and
 /// formats), so a configuration mistake fails before the first request.
 pub fn validate(params: &Params) -> Result<(), String> {
-    build_query(params, 0)?;
+    build_query(params, 0, PAGE_SIZE)?;
     let columns = mapping::columns(params.mapping)?;
     column_formats(params.formats, &columns)?;
     Ok(())
@@ -302,18 +361,30 @@ pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String>
 }
 
 /// The file name with its extension, without a doubled extension when the name already has it.
+/// Path separators and control characters become `_`, so the name cannot point into a folder, and
+/// a name that is nothing but the extension (`.csv`) becomes `export`.
 pub fn full_file_name(name: Option<&str>, file_type: FileType) -> String {
     let extension = file_type.extension();
-    let name = name
-        .map(str::trim)
-        .filter(|n| !n.is_empty())
-        .unwrap_or("export");
+    let name: String = name
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .map(|c| {
+            if matches!(c, '/' | '\\') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
     let suffix = format!(".{extension}");
     let base = if name.to_lowercase().ends_with(&suffix) {
         &name[..name.len() - suffix.len()]
     } else {
-        name
+        &name
     };
+    let base = base.trim();
+    let base = if base.is_empty() { "export" } else { base };
     format!("{base}.{extension}")
 }
 
@@ -357,18 +428,18 @@ mod tests {
         p.filter = "type: { eq: \"{{t}}\" }";
         p.sort_field = Some("last_name");
         p.sort_order = "DESC";
-        let (query, field) = build_query(&p, 400).unwrap();
+        let (query, field) = build_query(&p, 400, 200).unwrap();
         assert_eq!(field, "allPerson");
         assert_eq!(
             query,
-            "query { allPerson(where: { type: { eq: \"x\" }\n}, sort: { field: lastName, order: DESC }, skip: 400, take: 200) { results { firstName company { name } } totalCount } }"
+            "query { allPerson(where: { type: { eq: \"x\" }\n}, sort: { field: lastName, order: DESC }, skip: 400, take: 200) { results { id firstName company { name } } totalCount } }"
         );
     }
 
     #[test]
     fn without_a_sort_property_the_records_are_sorted_by_id() {
         let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
-        let (query, _) = build_query(&params(&mapping, &[], &json!({})), 0).unwrap();
+        let (query, _) = build_query(&params(&mapping, &[], &json!({})), 0, 200).unwrap();
         assert!(
             query.contains("where: { \n}, sort: { field: id, order: ASC }"),
             "{query}"
@@ -392,7 +463,7 @@ mod tests {
                 .parse()
                 .unwrap();
             skips.push(skip);
-            let count = (450 - skip).min(PAGE_SIZE);
+            let count = (450 - skip).min(200);
             Ok(page(
                 (skip..skip + count).map(|id| json!({"id": id})).collect(),
                 450,
@@ -451,6 +522,110 @@ mod tests {
         assert_eq!(skips, [0, 100, 200]);
     }
 
+    fn take_of(query: &str) -> usize {
+        query
+            .split("take: ")
+            .nth(1)
+            .unwrap()
+            .split(')')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn pages_are_asked_for_with_the_big_page_size() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut takes = Vec::new();
+        let records = fetch_all(&params(&mapping, &[], &variables), |query| {
+            takes.push(take_of(query));
+            let skip = skip_of(query);
+            let count = (12_000 - skip).min(take_of(query));
+            Ok(page(
+                (skip..skip + count).map(|id| json!({"id": id})).collect(),
+                12_000,
+            ))
+        })
+        .unwrap();
+        assert_eq!(records.len(), 12_000);
+        assert_eq!(takes, [PAGE_SIZE; 3]);
+    }
+
+    #[test]
+    fn a_failing_big_page_falls_back_to_the_small_page_size() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut takes = Vec::new();
+        let records = fetch_all(&params(&mapping, &[], &variables), |query| {
+            let take = take_of(query);
+            takes.push(take);
+            if take > 200 {
+                return Ok(r#"{"errors": [{"message": "take is too large"}]}"#.to_string());
+            }
+            let skip = skip_of(query);
+            let count = (450 - skip).min(take);
+            Ok(page(
+                (skip..skip + count).map(|id| json!({"id": id})).collect(),
+                450,
+            ))
+        })
+        .unwrap();
+        assert_eq!(records.len(), 450);
+        assert_eq!(takes, [PAGE_SIZE, 200, 200, 200]);
+    }
+
+    #[test]
+    fn a_real_error_is_still_an_error_after_the_fallback() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut calls = 0;
+        let error = fetch_all(&params(&mapping, &[], &variables), |_| {
+            calls += 1;
+            Ok(r#"{"errors": [{"message": "no permission"}]}"#.to_string())
+        })
+        .unwrap_err();
+        assert_eq!(error, "no permission");
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
+    fn a_record_on_two_pages_fails_the_step() {
+        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
+        let variables = json!({});
+        let mut p = params(&mapping, &[], &variables);
+        p.sort_field = Some("status");
+        let error = fetch_all(&p, |query| {
+            let skip = skip_of(query);
+            // Record 99 is on both pages: the sort order changed between the requests.
+            let ids: Vec<usize> = if skip == 0 {
+                (0..100).collect()
+            } else {
+                (99..199).collect()
+            };
+            Ok(page(ids.iter().map(|id| json!({"id": id})).collect(), 200))
+        })
+        .unwrap_err();
+        assert!(
+            error.starts_with("The record with id 99 came back on two pages"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_total_count_that_is_not_a_whole_number_is_an_error_or_missing() {
+        let read = |value: Value| read_total(Some(&value));
+        assert_eq!(read(json!(250)), Ok(Some(250)));
+        assert_eq!(read(json!(250.0)), Ok(Some(250)));
+        assert_eq!(read(json!(0)), Ok(Some(0)));
+        assert_eq!(read(Value::Null), Ok(None));
+        assert_eq!(read_total(None), Ok(None));
+        for bad in [json!("250"), json!(-1), json!(2.5), json!(true), json!([1])] {
+            assert!(read(bad.clone()).is_err(), "{bad}");
+        }
+    }
+
     #[test]
     fn an_empty_page_before_the_total_fails_the_step() {
         let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
@@ -476,7 +651,7 @@ mod tests {
             calls += 1;
             let skip = skip_of(query);
             let count = if skip == 0 { PAGE_SIZE } else { 5 };
-            let results: Vec<Value> = (0..count).map(|id| json!({"id": id})).collect();
+            let results: Vec<Value> = (skip..skip + count).map(|id| json!({"id": id})).collect();
             Ok(json!({"data": {"allPerson": {"results": results}}}).to_string())
         })
         .unwrap();
@@ -539,20 +714,20 @@ mod tests {
         let mut p = params(&mapping, &[], &variables);
         p.model = "Person { x }";
         assert_eq!(
-            build_query(&p, 0).unwrap_err(),
+            build_query(&p, 0, 200).unwrap_err(),
             "Select the model to export records from"
         );
         let mut p = params(&mapping, &[], &variables);
         p.sort_order = "UP";
         assert!(
-            build_query(&p, 0)
+            build_query(&p, 0, 200)
                 .unwrap_err()
                 .starts_with("Unknown sort order")
         );
         let mut p = params(&mapping, &[], &variables);
         p.sort_field = Some("name } x");
         assert!(
-            build_query(&p, 0)
+            build_query(&p, 0, 200)
                 .unwrap_err()
                 .starts_with("The sort property")
         );
@@ -704,5 +879,10 @@ mod tests {
         );
         assert_eq!(full_file_name(None, FileType::Xlsx), "export.xlsx");
         assert_eq!(full_file_name(Some("  "), FileType::Csv), "export.csv");
+        // Nothing but the extension, and a name that points into a folder.
+        assert_eq!(full_file_name(Some(".csv"), FileType::Csv), "export.csv");
+        assert_eq!(full_file_name(Some(" .CSV "), FileType::Csv), "export.csv");
+        assert_eq!(full_file_name(Some("a/b\\c"), FileType::Csv), "a_b_c.csv");
+        assert_eq!(full_file_name(Some("../x"), FileType::Csv), ".._x.csv");
     }
 }

@@ -66,7 +66,7 @@
       },
       "name": "property-sort",
       "label": "Sort property",
-      "info": "The property to sort the records by. Leave empty to sort by id. Use a property with unique values: records are fetched in pages, so ties can make a record appear twice or not at all."
+      "info": "The property to sort the records by. Leave empty to sort by id. Use a property with unique values: ties can duplicate or skip records between pages, and the step fails when a record comes back twice."
     },
     {
       "meta": {
@@ -153,7 +153,7 @@
       },
       "name": "export-property-mapping",
       "label": "Property mapping",
-      "info": "KEY = column name in the file, VALUE = database name of the property (snake_case), e.g. created_at. For a relation: relation.property, e.g. company.name. For a has-many or has-and-belongs-to-many relation the values of all related records go in one cell, one per line, e.g. departments.description. Columns follow this order."
+      "info": "KEY = column name, VALUE = database name of the property (snake_case), e.g. created_at, or relation.property, e.g. company.name. A has-many relation (departments.description) puts all its values in one cell, one per line. Columns follow this order."
     },
     {
       "meta": {
@@ -179,7 +179,7 @@
       },
       "name": "escape-formulas",
       "label": "Escape formulas",
-      "info": "Put a ' in front of CSV text that starts with =, +, -, @ or a tab, so Excel shows it as text instead of running it as a formula. Numbers are left alone. Not used for Excel files."
+      "info": "Put a ' in front of CSV text that starts with =, +, -, @ or a tab, so a spreadsheet does not run it as a formula. The ' stays visible and is part of the value: turn off for CSV not opened in a spreadsheet. Numbers are left alone. Not used for Excel."
     },
     {
       "meta": {

@@ -132,6 +132,16 @@ fn parse_moment(text: &str) -> Option<Moment> {
     if let Ok(datetime) = DateTime::parse_from_rfc3339(text) {
         return Some(Moment::DateTime(datetime.naive_utc()));
     }
+    // An offset written the Postgres way (`+00`, `+0100`) or after a space.
+    for format in [
+        "%Y-%m-%d %H:%M:%S%.f%#z",
+        "%Y-%m-%dT%H:%M:%S%.f%#z",
+        "%Y-%m-%d %H:%M:%S%.f %#z",
+    ] {
+        if let Ok(datetime) = DateTime::parse_from_str(text, format) {
+            return Some(Moment::DateTime(datetime.naive_utc()));
+        }
+    }
     for format in [
         "%Y-%m-%dT%H:%M:%S%.f",
         "%Y-%m-%d %H:%M:%S%.f",
@@ -421,6 +431,8 @@ pub fn apply(column: &str, value: &Value, format: Option<&Format>) -> Result<Val
     };
     match format {
         None => Ok(value.clone()),
+        // A blank text is an empty value, like `null`: nothing to format.
+        Some(Format::Date(_)) if text.trim().is_empty() => Ok(value.clone()),
         Some(Format::Date(tokens)) => Ok(Value::String(format_moment(column, &text, tokens)?)),
         // Only a number, or text that is one, gets the separator: `v1.2-beta` stays as it is.
         Some(Format::Decimal(separator)) if text.trim().parse::<f64>().is_ok() => {
@@ -487,6 +499,34 @@ mod tests {
         // Not a date, or before the first date Excel counts correctly.
         assert_eq!(excel("dd-MM-yyyy", "soon"), None);
         assert_eq!(excel("dd-MM-yyyy", "1900-01-15"), None);
+    }
+
+    #[test]
+    fn a_blank_text_is_not_formatted_as_a_date() {
+        let format = parse("C", "Date|dd-MM-yyyy").unwrap();
+        for blank in ["", "  "] {
+            assert_eq!(
+                apply("C", &json!(blank), Some(&format)).unwrap(),
+                json!(blank)
+            );
+        }
+        assert!(apply("C", &json!("soon"), Some(&format)).is_err());
+    }
+
+    #[test]
+    fn offsets_in_other_spellings_are_converted_to_utc() {
+        for value in [
+            "2024-03-07 14:05:09.123+00",
+            "2024-03-07 15:05:09.123+0100",
+            "2024-03-07T15:05:09.123+01:00",
+            "2024-03-07 15:05:09 +01",
+        ] {
+            assert_eq!(
+                date("yyyy-MM-dd HH:mm:ss", value).unwrap(),
+                "2024-03-07 14:05:09",
+                "{value}"
+            );
+        }
     }
 
     #[test]
