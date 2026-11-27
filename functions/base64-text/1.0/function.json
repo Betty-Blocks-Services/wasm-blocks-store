@@ -1,0 +1,81 @@
+{
+  "description": "Encodes text as base64, or decodes base64 back to text, e.g. for a Basic auth header or an API field that wants base64. Supports standard and URL-safe base64.",
+  "label": "Base64",
+  "category": "Misc",
+  "icon": {
+    "name": "TextIcon",
+    "color": "Purple"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Select",
+        "default": "encode",
+        "values": [
+          {
+            "label": "Encode (text to base64)",
+            "value": "encode"
+          },
+          {
+            "label": "Decode (base64 to text)",
+            "value": "decode"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "mode",
+      "label": "Mode",
+      "info": "Encode turns Text into base64, like the classic base64_encode expression. Decode turns base64 back into text, like base64_decode."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "text",
+      "label": "Text",
+      "info": "Encode: any text, encoded as UTF-8. Decode: the base64 to decode; line breaks and missing = padding are fine. Decoding fails if the result is not text, e.g. a PDF or image."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "standard",
+        "values": [
+          {
+            "label": "Standard (+ and /)",
+            "value": "standard"
+          },
+          {
+            "label": "URL-safe (- and _)",
+            "value": "url-safe"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "alphabet",
+      "label": "Alphabet",
+      "info": "Standard: the usual base64, with = padding when encoding. URL-safe: for JWTs and URL parameters, encoded without padding. Check which one the other system uses."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "result",
+      "label": "Result",
+      "info": "Encode: the base64 text. Decode: the decoded text. Empty Text gives an empty result."
+    }
+  ],
+  "yields": "NONE"
+}
