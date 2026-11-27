@@ -5,8 +5,8 @@ Exports the records of a model to a CSV or Excel (XLSX) file, stores the file th
 ActionsJS step `export-to-csv` 3.4.
 
 **Status:** built for `wasm32-wasip2`, unit- and component-tested (`cargo test -p export-records`)
-and run successfully on a canvas (2026-11-24). A later run exported 50,000 records in 32 seconds (see
-"Performance"). The **Escape formulas** option, the paging changes and the review fixes of PR #21 have
+and run successfully on a canvas (2026-11-24). Later runs exported 50,000 records in 4.4 seconds and 200,000 in
+24 seconds (see "Performance"). The **Escape formulas** option, the paging changes and the review fixes of PR #21 have
 not all been run on a canvas yet. The points
 under "Not tested yet" are still open.
 
@@ -36,9 +36,8 @@ under "Not tested yet" are still open.
 ## Behaviour
 
 - **All matching records are exported**, asked for 5000 per request until `totalCount` is reached.
-  If a request with 5000 fails (a `take` the Data API does not accept, or a query that takes too long),
-  that page is asked again with 200 and the export continues with 200 per request. A page with fewer
-  records does not end the export (the Data API may cap pages lower); only reaching `totalCount` does.
+  A page with fewer records does not end the export (the Data API may cap pages lower); only reaching
+  `totalCount` does.
   A `totalCount` that is not a whole number fails the step. If a page comes back empty before that, the step fails rather than storing an
   incomplete file. Every page is one request towards the Data API rate limit.
 - **The records are always sorted**, by `id` when no sort property is chosen, so paging cannot export a
@@ -124,13 +123,11 @@ Run on a canvas, but not checked separately:
 
 ## Performance
 
-One canvas run exported 50,000 records in 32 seconds with 200 records per request (250 requests). A step
-started from the front end is answered after about a minute and keeps running for at most 10 minutes (as
-reported by the platform team, not tested here). The step now asks for 5000 records per request, which is
-reported to be accepted by the Data API but is not verified: the 2026-10-08 log entry measured a maximum
-of 200. If 5000 is refused, or a query with 5000 records and many relations takes longer than the 5 s
-query timeout, the export falls back to 200 per request, as fast as before. Measure again on a canvas and
-put the result here.
+Canvas runs with 5000 records per request: 50,000 records in 4.4 seconds and 200,000 records in 24
+seconds. With 200 per request (the earlier maximum) 50,000 records took 32 seconds. A step started from
+the front end is answered after about a minute and keeps running for at most 10 minutes (as reported by
+the platform team, not tested here). The largest export tried is 200,000 records; the memory limit has
+not been found yet.
 
 ## Tests
 

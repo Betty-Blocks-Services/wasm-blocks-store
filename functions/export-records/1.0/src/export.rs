@@ -8,15 +8,10 @@ use crate::filter;
 use crate::format::{self, Format};
 use crate::mapping::{self, Column};
 
-/// The records asked for per request. The Data API accepted at most 200 per request when this was
-/// first measured (docs/developer-learnings-log.md, 2026-10-08) and is reported to take up to
-/// 5000 now: a bigger page means far fewer requests. When a request fails with this many, the
-/// export carries on with `FALLBACK_PAGE_SIZE`.
+/// The records asked for per request. The Data API accepts a `take` of 5000 (an export of 200,000
+/// records took 24 seconds on a canvas, 50,000 took 4.4); earlier it accepted at most 200
+/// (docs/developer-learnings-log.md, 2026-10-08).
 pub const PAGE_SIZE: usize = 5000;
-
-/// The page size that is known to work: used after a request with `PAGE_SIZE` records failed (a
-/// `take` that is too high, or a query that takes too long with so many records).
-pub const FALLBACK_PAGE_SIZE: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FileType {
@@ -179,9 +174,7 @@ pub const XLSX_MAX_ROWS: u64 = 1_048_575;
 /// incomplete file. Only when the response has no `totalCount` does a page with fewer records than
 /// asked end the export.
 ///
-/// Pages are asked for with `PAGE_SIZE` records. If such a request fails, the page is asked again
-/// with `FALLBACK_PAGE_SIZE` and the export continues with that size. A record that comes back on
-/// two pages (equal values in the sort property, so the order differs between requests) fails the
+/// Pages are asked for with `PAGE_SIZE` records. A record that comes back on two pages (equal values in the sort property, so the order differs between requests) fails the
 /// step: the file would have duplicates and miss records.
 pub fn fetch_all(
     params: &Params,
@@ -190,20 +183,10 @@ pub fn fetch_all(
     validate(params)?;
     let mut records: Vec<Value> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut page_size = PAGE_SIZE;
     loop {
-        let (query, field) = build_query(params, records.len(), page_size)?;
-        let result = send(&query)
-            .map_err(|error| host_error_message(&error))
-            .and_then(|response| read_page(&response, &field));
-        let (page, total) = match result {
-            Ok(page) => page,
-            Err(_) if page_size > FALLBACK_PAGE_SIZE => {
-                page_size = FALLBACK_PAGE_SIZE;
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
+        let (query, field) = build_query(params, records.len(), PAGE_SIZE)?;
+        let response = send(&query).map_err(|error| host_error_message(&error))?;
+        let (page, total) = read_page(&response, &field)?;
         if let Some(total) = total
             && params.file_type == FileType::Xlsx
             && total > XLSX_MAX_ROWS
@@ -237,7 +220,7 @@ pub fn fetch_all(
                 ));
             }
             Some(_) => {}
-            None if received < page_size => return Ok(records),
+            None if received < PAGE_SIZE => return Ok(records),
             None => {}
         }
     }
@@ -554,30 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_big_page_falls_back_to_the_small_page_size() {
-        let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
-        let variables = json!({});
-        let mut takes = Vec::new();
-        let records = fetch_all(&params(&mapping, &[], &variables), |query| {
-            let take = take_of(query);
-            takes.push(take);
-            if take > 200 {
-                return Ok(r#"{"errors": [{"message": "take is too large"}]}"#.to_string());
-            }
-            let skip = skip_of(query);
-            let count = (450 - skip).min(take);
-            Ok(page(
-                (skip..skip + count).map(|id| json!({"id": id})).collect(),
-                450,
-            ))
-        })
-        .unwrap();
-        assert_eq!(records.len(), 450);
-        assert_eq!(takes, [PAGE_SIZE, 200, 200, 200]);
-    }
-
-    #[test]
-    fn a_real_error_is_still_an_error_after_the_fallback() {
+    fn an_error_from_the_data_api_fails_the_step_at_once() {
         let mapping = parse_map(r#"{"Id": "id"}"#, "M").unwrap();
         let variables = json!({});
         let mut calls = 0;
@@ -587,7 +547,7 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error, "no permission");
-        assert_eq!(calls, 2);
+        assert_eq!(calls, 1);
     }
 
     #[test]

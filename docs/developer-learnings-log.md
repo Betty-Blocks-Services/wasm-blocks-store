@@ -8,19 +8,19 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
-## `export-records` took 32 seconds for 50,000 records at 200 per request; the step now asks for 5000 and falls back to 200 (2026-11-27)
+## The Data API accepts a `take` of 5000 now: `export-records` exported 50,000 records in 4.4 s and 200,000 in 24 s (2026-11-27)
 
-**Fact:** a canvas run of `export-records` 1.0 exporting 50,000 records took 32 seconds, which is 250 Data API requests of 200 records. The step now asks for 5000 records per request (`PAGE_SIZE`) and, when a request fails, repeats that page with 200 (`FALLBACK_PAGE_SIZE`) and carries on with 200.
+**Fact:** `export-records` 1.0 asks for 5000 records per request (`take: 5000`) and the Data API accepts it. Canvas runs: 50,000 records in 4.4 seconds and 200,000 records in 24 seconds. With `take: 200` (250 requests) the same 50,000 records took 32 seconds. This overtakes the 2026-10-08 entry, which measured a maximum of 200 (a `take` of 201 was rejected): that limit no longer holds.
 
-**How found:** a timing run on a test app; the new page size follows a report that the Data API accepts a `take` of up to 5000 now.
+**How found:** timing runs of the step on a test app, after a report that the Data API takes up to 5000 now.
 
-**Why it matters:** the earlier entry "The Data API accepts a `take` of at most 200" (2026-10-08) measured a maximum of 200, and a step that asks for more would fail on every export if that were still true. The fallback keeps the step working either way and also covers a query that exceeds the 5 s query timeout with 5000 records and many nested relations. For a step started from the front end, the platform team reports an answer after about a minute while the step runs on for at most 10 minutes (not tested here).
+**Why it matters:** almost all of the time was request overhead, so a bigger page makes an export several times faster. Steps that page through the Data API with 200 (the Data API Request step among them) can use the same page size. A step started from the front end is answered after about a minute and keeps running for at most 10 minutes (the platform team's figures, not tested here).
 
-**Not tested:** whether a `take` of 5000 is accepted today, how long an export of 50,000 records takes with it, and whether a wide selection with has-many relations stays under the query timeout at 5000.
+**Not tested:** a `take` above 5000, whether 5000 stays under the 5 s query timeout for a wide selection with many nested has-many relations, and how many records fit in the step's memory.
 
-**Status:** the 50,000-record timing was measured. The page size of 5000 is not verified; the fallback is covered by unit tests only.
+**Status:** confirmed for `take: 5000` on the Data API with a model of simple properties and a few relations.
 
-**Where it should land:** the Data API limits section of the crash course, next to the `take` maximum, once the new limit is confirmed.
+**Where it should land:** the Data API limits section of the crash course, replacing the maximum of 200.
 
 ---
 
@@ -1109,6 +1109,8 @@ What was observed along the way:
 ---
 
 ## The Data API accepts a `take` of at most 200 (2026-10-08)
+
+> **Outdated (2026-11-27):** the Data API accepts a `take` of 5000 now; see the entry at the top of this log. The text below is what was measured on 2026-10-08.
 
 **Fact:** a query without `take` returns 200 records, which is also the maximum; a `take` of 201 or more is rejected as an unsupported request. This is not in the Data API documentation (which lists a 5 s query timeout, 10 queries per request, 4 relation levels and read-rate limits). The ActionsJS Data API Request step's README says "max 5,000" and its code clamps to 5000, so that cap does not match what the server accepts. Reading more than 200 records takes several queries using `skip`, ideally with a unique sort order so pages do not overlap; the WASM Data API Request step does this itself.
 
