@@ -1,0 +1,15 @@
+[package]
+name = "base64-text"
+version = "1.0.0"
+edition.workspace = true
+build = "../../../build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = { workspace = true }
+wit-bindgen = { workspace = true }
+
+[dev-dependencies]
+wasmtime-testing-helper = { workspace = true }

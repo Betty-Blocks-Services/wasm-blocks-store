@@ -117,4 +117,9 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+A generic encoding step, tested on a canvas:
+
+- `functions/base64-text/1.0/` (Base64) — encodes text as base64 or decodes it, standard or
+  URL-safe. Replaces the classic `base64_encode` and `base64_decode` expressions.
+
 See `docs/developer-learnings-log.md` for the full history.

@@ -1,0 +1,19 @@
+package betty-blocks:base64-text@1.0.0;
+
+interface base64-text {
+    // Parameter names match the option names in function.json one-to-one (bb functions validate
+    // does not check this). `text` is an option so that a variable that is empty at run time
+    // arrives as empty input (and gives an empty result) instead of failing before the step
+    // runs. `mode` and `alphabet` are Select options in function.json, received as a plain
+    // `string` holding the chosen option's `value`. Only strings pass between steps, so decoding
+    // only succeeds for data that is UTF-8 text.
+    base64-text: func(
+        mode: string,
+        text: option<string>,
+        alphabet: string,
+    ) -> result<string, string>;
+}
+
+world main {
+    export base64-text;
+}
