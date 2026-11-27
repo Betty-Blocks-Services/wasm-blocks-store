@@ -1,6 +1,9 @@
 //! Renders the query the user typed, sends it to the Data API as it is and returns the `data` of
 //! the response. Unlike `data-api-request` it knows nothing about models: the query can read as
 //! many models as it likes.
+//!
+//! The value check (`has_line_break` up to `check_unquoted_tags`) is copied in
+//! `export-records/1.0/src/filter.rs`: change both.
 
 use serde_json::Value;
 
@@ -185,7 +188,7 @@ fn code_outside_values(rendered: &Rendered, hostile: impl Fn(usize) -> bool) -> 
             .filter(|(at, _)| {
                 // The spans are in order and do not overlap: look the one at `at` up by binary search.
                 let next = spans.partition_point(|span| span.end <= *at);
-                !spans.get(next).is_some_and(|span| span.start <= *at)
+                spans.get(next).is_none_or(|span| span.start > *at)
             })
             .map(|(_, character)| character)
             .collect(),

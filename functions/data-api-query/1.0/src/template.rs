@@ -1,5 +1,5 @@
 //! A copy of `data-api-request`'s `template.rs`. Only the wording differs: two error messages and
-//! some doc comments say "query" where the original says "filter". Keep the two in sync.
+//! some doc comments say "query" where the original says "filter". `export-records/1.0/src/template.rs` is a third copy: keep all three in sync.
 //!
 //! Fills `{{name}}` placeholders in the query with values from the Variables option. This is a
 //! small, flat part of what `templayed.js` (the template library the ActionsJS step used) did:

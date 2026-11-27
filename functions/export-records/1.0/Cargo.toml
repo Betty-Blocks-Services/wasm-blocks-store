@@ -1,0 +1,20 @@
+[package]
+name = "export-records"
+version = "1.0.0"
+edition.workspace = true
+build = "../../../build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = { workspace = true }
+chrono = { version = "0.4.45", default-features = false, features = ["alloc"] }
+rust_xlsxwriter = { version = "0.103.0", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wit-bindgen = { workspace = true }
+
+[dev-dependencies]
+wasmtime-testing-helper = { workspace = true }
+zip = { version = "9.8.1", default-features = false, features = ["deflate"] }

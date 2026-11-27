@@ -48,7 +48,8 @@ Full detail: [CONTRIBUTING.md](../../CONTRIBUTING.md)'s "Git workflow" section.
    do. Some are platform bugs already root-caused with a known fix or workaround — re-discovering
    them from scratch wastes time. A few examples of investigations already closed out that don't
    need repeating: the `store-file-base64` example's stale `betty-blocks-utilities:
-   upload-file` import (moved to `betty-blocks-types:upload-file@3.0.0`); renaming/re-versioning
+   upload-file` import (moved to `betty-blocks-types:upload-file@3.0.0`, now `@4.0.0`, which
+   `export-records` runs on live); renaming/re-versioning
    source files does not change an already-built `.wasm` — you must actually rebuild; a
    `function.json` text field (`description` confirmed, others likely) over 255 characters gets
    silently rejected at step-creation time, not truncated — check lengths before publishing. Don't take this list as complete — read the

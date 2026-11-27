@@ -1,0 +1,200 @@
+{
+  "description": "Export the records of a model to a CSV or Excel (XLSX) file and return a file reference to store in a file property with a Create or Update step.",
+  "label": "Export to CSV or Excel",
+  "category": "Utilities",
+  "icon": {
+    "name": "DownloadIcon",
+    "color": "Green"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Select",
+        "default": "csv",
+        "values": [
+          { "label": "CSV", "value": "csv" },
+          { "label": "Excel", "value": "excel" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "file-type",
+      "label": "Type",
+      "info": "CSV or Excel (XLSX)."
+    },
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model-source",
+      "label": "Model to export records from",
+      "info": "The model whose records are exported."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "default": ""
+      },
+      "name": "filter",
+      "label": "Filter",
+      "info": "Data API filter without outer braces, e.g. type: { eq: \"{{type}}\" }. Use {{name}} to insert a value from Variables in filter; for text add the quotes yourself. Leave empty to export all records."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "filter-variables",
+      "label": "Variables in filter",
+      "info": "The values you can insert in the filter with {{name}}."
+    },
+    {
+      "meta": {
+        "type": "Property",
+        "model": "model-source"
+      },
+      "configuration": {
+        "dependsOn": [
+          {
+            "option": "model-source",
+            "action": "CLEAR"
+          }
+        ]
+      },
+      "name": "property-sort",
+      "label": "Sort property",
+      "info": "The property to sort the records by. Leave empty to sort by id. Use a property with unique values: ties can duplicate or skip records between pages, and the step fails when a record comes back twice."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "ASC",
+        "values": [
+          { "label": "Ascending", "value": "ASC" },
+          { "label": "Descending", "value": "DESC" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "sort-order",
+      "label": "Sort order",
+      "info": "The sort direction of the records in the file."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "comma",
+        "values": [
+          { "label": ";", "value": "semicolon" },
+          { "label": ",", "value": "comma" },
+          { "label": "|", "value": "pipe" },
+          { "label": "tab", "value": "tab" },
+          { "label": "space", "value": "space" }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "delimiter",
+      "label": "Delimiter",
+      "info": "The character between the values in a CSV file. Not used for Excel."
+    },
+    {
+      "meta": {
+        "type": "Model",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "model-target",
+      "label": "Model to save file into",
+      "info": "The model with the file property the file will be stored in."
+    },
+    {
+      "meta": {
+        "allowedKinds": ["FILE"],
+        "type": "Property",
+        "model": "model-target",
+        "validations": {
+          "required": true
+        }
+      },
+      "configuration": {
+        "dependsOn": [
+          {
+            "option": "model-target",
+            "action": "CLEAR"
+          }
+        ]
+      },
+      "name": "property-target",
+      "label": "Property to save file into",
+      "info": "The file property the file will be stored in. Store the reference in it with a Create or Update step."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "default": "export"
+      },
+      "name": "file-name",
+      "label": "Filename",
+      "info": "Name of the exported file, without extension: .csv or .xlsx is added."
+    },
+    {
+      "meta": {
+        "type": "Map",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "export-property-mapping",
+      "label": "Property mapping",
+      "info": "KEY = column name, VALUE = database name of the property (snake_case), e.g. created_at, or relation.property, e.g. company.name. A has-many relation (departments.description) puts all its values in one cell, one per line. Columns follow this order."
+    },
+    {
+      "meta": {
+        "type": "Map"
+      },
+      "name": "format-property-mapping",
+      "label": "Format mapping for export columns",
+      "info": "KEY = column name (as in Property mapping), VALUE = Date|<format> (also Datetime|, Time|), e.g. Date|dd-MM-yyyy with the letters y M d E Q H h m s S a, or Decimal|, / Price|, for the decimal separator."
+    },
+    {
+      "meta": {
+        "type": "Boolean",
+        "default": true
+      },
+      "name": "use-bom",
+      "label": "Use BOM",
+      "info": "Add a BOM character at the start of a CSV file, so Excel reads it as UTF-8. Not used for Excel files."
+    },
+    {
+      "meta": {
+        "type": "Boolean",
+        "default": true
+      },
+      "name": "escape-formulas",
+      "label": "Escape formulas",
+      "info": "Put a ' in front of CSV text that starts with =, +, -, @ or a tab, so a spreadsheet does not run it as a formula. The ' stays visible and is part of the value: turn off for CSV not opened in a spreadsheet. Numbers are left alone. Not used for Excel."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "reference",
+      "label": "As",
+      "info": "The file reference. Store it in the file property with a Create or Update step."
+    }
+  ],
+  "yields": "NONE"
+}

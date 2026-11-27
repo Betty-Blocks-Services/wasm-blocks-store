@@ -8,6 +8,50 @@ Each entry: the fact, how it was found, and where it should eventually land in t
 
 ---
 
+## The Data API accepts a `take` of 5000 now: `export-records` exported 50,000 records in 4.4 s and 200,000 in 24 s (2026-11-27)
+
+**Fact:** `export-records` 1.0 asks for 5000 records per request (`take: 5000`) and the Data API accepts it. Canvas runs: 50,000 records in 4.4 seconds and 200,000 records in 24 seconds. With `take: 200` (250 requests) the same 50,000 records took 32 seconds. This overtakes the 2026-10-08 entry, which measured a maximum of 200 (a `take` of 201 was rejected): that limit no longer holds.
+
+**How found:** timing runs of the step on a test app, after a report that the Data API takes up to 5000 now.
+
+**Why it matters:** almost all of the time was request overhead, so a bigger page makes an export several times faster. Steps that page through the Data API with 200 (the Data API Request step among them) can use the same page size. A step started from the front end is answered after about a minute and keeps running for at most 10 minutes (the platform team's figures, not tested here).
+
+**Not tested:** a `take` above 5000, whether 5000 stays under the 5 s query timeout for a wide selection with many nested has-many relations, and how many records fit in the step's memory.
+
+**Status:** confirmed for `take: 5000` on the Data API with a model of simple properties and a few relations.
+
+**Where it should land:** the Data API limits section of the crash course, replacing the maximum of 200.
+
+---
+
+## A Select option can feed a WIT `enum` parameter, and `upload-file@4.0.0` is live (2026-11-24)
+
+**Fact:** `export-records` 1.0 has three Select options (`file-type`, `sort-order`, `delimiter`) whose WIT parameters are `enum`s, with each Select `value` equal to an enum case name (`csv`, `ASC`, `semicolon`). Published with `bb functions publish` and run on a canvas, the step accepted the chosen values as enum cases: the platform maps a Select value onto the enum case with the same name, the same way the native HTTP step's `betty-http-method` enum works. The same run stored its file through `betty-blocks-types:upload-file/upload-file@4.0.0` (the step's only upload import), so `@4.0.0` is live on the platform, not only at `wasm-base-components` HEAD.
+
+**How found:** 2026-11-24, canvas run of `export-records` 1.0 (PR #21) on a test app.
+
+**Why it matters:** an enum is a better WIT type for a Select than `string`: the component no longer has to reject unknown text, and `bb functions validate`/`just step-lint` can check the values. A case name must be kebab-case words (each all lowercase or all UPPERCASE, so `ASC` is valid) and cannot be a symbol, so a delimiter needs names like `comma`, not `,`. For new steps that upload a file, pin `upload-file@4.0.0` (with `data-api@3.0.0`/`types@3.0.0`); this answers the 2026-10-07 drift entry below. Belongs in the crash course's option-types section.
+
+**Not tested:** not every value of the three Selects was tried in the run; whether the My BB function.json editor (see the next entry) accepts a Select on an `enum` parameter.
+
+**Status:** confirmed for the values used in that canvas run.
+
+---
+
+## My BB's function.json editor refuses to change a WIT `string` option to a Select, which `bb functions publish` accepts (2026-11-20)
+
+**Fact:** My BB now has a `function.json` editor for an uploaded Wasm step. After uploading `export-to-csv` 1.0 in the IDE (its options were generated from the WIT, so `file-type: string` became a Text option), changing that option in the editor to `"type": "Select"` with values `csv`/`xlsx` was refused: `Option "file-type" can not change from Text to Select, the component does not accept that`.
+
+**How found:** Rob, 2026-11-20, in the My BB function.json editor.
+
+**Why it matters:** the same combination (a WIT `string` parameter with a `Select` option) is accepted by `bb functions publish` and works on a canvas: `data-api-request` (`query-type`, `sort-order`, `output-type`) is published that way. So the editor checks option types against the WIT more strictly than the publish endpoint does, and refuses a step shape that is known to work. Until that is resolved, publish steps with Select options through the CLI (see `testing-a-step-in-a-real-app.md`). This partly overtakes the 2026-08-10 entry: `function.json` can now be edited after an IDE upload, but not every change is allowed.
+
+**Not tested:** whether the editor accepts a Select for a WIT `enum` parameter, and which other type changes it refuses (e.g. Text to Model, Property or Map).
+
+**Status:** the error was seen firsthand on 2026-11-20. That the editor and the CLI disagree is an inference from `data-api-request` working; the two were not compared on the same step. Reported to the product team: open.
+
+---
+
 ## The Data API reads backslashes inside a string literally: no \u or \n decoding, and no error for an invalid escape (2026-10-24)
 
 **Fact:** three filters on one record, run through the `data-api-query` step on a production-zone app, with the text typed into the Query option:
@@ -1065,6 +1109,8 @@ What was observed along the way:
 ---
 
 ## The Data API accepts a `take` of at most 200 (2026-10-08)
+
+> **Outdated (2026-11-27):** the Data API accepts a `take` of 5000 now; see the entry at the top of this log. The text below is what was measured on 2026-10-08.
 
 **Fact:** a query without `take` returns 200 records, which is also the maximum; a `take` of 201 or more is rejected as an unsupported request. This is not in the Data API documentation (which lists a 5 s query timeout, 10 queries per request, 4 relation levels and read-rate limits). The ActionsJS Data API Request step's README says "max 5,000" and its code clamps to 5000, so that cap does not match what the server accepts. Reading more than 200 records takes several queries using `skip`, ideally with a unique sort order so pages do not overlap; the WASM Data API Request step does this itself.
 
