@@ -116,4 +116,10 @@ here):
   so one step can read several models at once (`{{variables}}` as in the first step; the response
   `data` is the Result). See its README for what a value may be inside and outside quotes.
 
+A generic hashing step, tested on a canvas:
+
+- `functions/hash-text/1.0/` (Hash Text) — SHA-256/384/512, SHA-1, MD5 or HMAC-SHA256/384/512 of
+  a text, as hex or base64. Replaces the classic hash expressions (`sha256`, `hmac_sha256`, ...),
+  with the same output.
+
 See `docs/developer-learnings-log.md` for the full history.
