@@ -1,0 +1,113 @@
+{
+  "description": "Hashes text with SHA-256, SHA-384, SHA-512, SHA-1, MD5 or HMAC, e.g. to sign an API request or check a webhook signature.",
+  "label": "Hash Text",
+  "category": "Misc",
+  "icon": {
+    "name": "LockIcon",
+    "color": "Purple"
+  },
+  "options": [
+    {
+      "meta": {
+        "type": "Select",
+        "default": "sha256",
+        "values": [
+          {
+            "label": "SHA-256",
+            "value": "sha256"
+          },
+          {
+            "label": "SHA-384",
+            "value": "sha384"
+          },
+          {
+            "label": "SHA-512",
+            "value": "sha512"
+          },
+          {
+            "label": "SHA-1 (not secure)",
+            "value": "sha1"
+          },
+          {
+            "label": "MD5 (not secure)",
+            "value": "md5"
+          },
+          {
+            "label": "HMAC-SHA256 (with a secret key)",
+            "value": "hmac-sha256"
+          },
+          {
+            "label": "HMAC-SHA384 (with a secret key)",
+            "value": "hmac-sha384"
+          },
+          {
+            "label": "HMAC-SHA512 (with a secret key)",
+            "value": "hmac-sha512"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "algorithm",
+      "label": "Algorithm",
+      "info": "A plain hash (SHA-256 is the usual one), or HMAC to sign with a secret key, e.g. for a webhook or API signature. SHA-1 and MD5 only when another system requires them: they are not secure."
+    },
+    {
+      "meta": {
+        "type": "Text",
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "text",
+      "label": "Text",
+      "info": "The text to hash, exactly as it is: spaces and line breaks change the hash. Hashed as UTF-8 bytes."
+    },
+    {
+      "meta": {
+        "type": "Text"
+      },
+      "name": "secret-key",
+      "label": "Secret key",
+      "info": "Only for the HMAC algorithms, and required there: the shared secret, used as UTF-8 text. Leave empty for the other algorithms. Use a variable that holds the secret rather than typing it in."
+    },
+    {
+      "meta": {
+        "type": "Select",
+        "default": "hex",
+        "values": [
+          {
+            "label": "Hex (lowercase)",
+            "value": "hex"
+          },
+          {
+            "label": "Base64",
+            "value": "base64"
+          }
+        ],
+        "validations": {
+          "required": true
+        }
+      },
+      "name": "output-encoding",
+      "label": "Output encoding",
+      "info": "How the hash is written as text. Hex: lowercase, the usual way to write a hash. Base64: standard and padded, which some APIs ask for. Check which one the other system expects."
+    },
+    {
+      "meta": {
+        "type": "Output",
+        "validations": {
+          "required": true
+        },
+        "output": {
+          "type": "Text"
+        }
+      },
+      "name": "hash",
+      "label": "Hash",
+      "info": "The hash of Text in the chosen encoding. In hex: 32 characters for MD5, 40 for SHA-1, 64 for SHA-256, 96 for SHA-384 and 128 for SHA-512 (the same for their HMAC)."
+    }
+  ],
+  "yields": "NONE"
+}
