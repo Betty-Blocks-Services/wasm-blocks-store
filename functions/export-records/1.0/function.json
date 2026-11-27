@@ -153,7 +153,7 @@
       },
       "name": "export-property-mapping",
       "label": "Property mapping",
-      "info": "KEY = column name in the file, VALUE = database name of the property (snake_case), e.g. created_at. For a belongs-to relation: relation.property, e.g. company.name. Columns follow this order."
+      "info": "KEY = column name in the file, VALUE = database name of the property (snake_case), e.g. created_at. For a relation: relation.property, e.g. company.name. For a has-many or has-and-belongs-to-many relation the values of all related records go in one cell, one per line, e.g. departments.description. Columns follow this order."
     },
     {
       "meta": {

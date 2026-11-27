@@ -1,8 +1,12 @@
 //! Writing the rows as a CSV file (like the `export-to-csv` 0.2 package the ActionsJS step used)
 //! or as an XLSX file (like SheetJS `json_to_sheet`).
 
-use rust_xlsxwriter::Workbook;
+use std::collections::HashMap;
+
+use rust_xlsxwriter::{Format, Workbook};
 use serde_json::{Number, Value};
+
+use crate::format::ExcelDate;
 
 /// Close to JavaScript's `String(number)` for a JSON number: `1.0` prints as `1`, `1e21` as
 /// `1e+21`. It differs for floats below 1e-6 (`1e-7` prints as `0.0000001`, JavaScript `1e-7`)
@@ -33,6 +37,17 @@ pub fn number_to_string(number: &Number) -> String {
 /// relation) is written as JSON. (The ActionsJS step wrote `[object Object]`.)
 fn other_to_string(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
+}
+
+/// A value as plain text, for joining the values of a to-many relation into one cell.
+pub fn value_to_text(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Bool(true) => String::from("TRUE"),
+        Value::Bool(false) => String::from("FALSE"),
+        Value::Number(number) => number_to_string(number),
+        other => other_to_string(other),
+    }
 }
 
 /// Whether a spreadsheet program could read the text as a formula: it starts with `=`, `+`, `-`,
@@ -169,11 +184,42 @@ fn check_cell_length(text: &str, header: &str, index: usize) -> Result<(), Strin
     Ok(())
 }
 
+/// Column width limits in Excel character units. A column is as wide as its longest line (like a
+/// double-click on the column border), but not wider than the maximum, so one long text does not
+/// push the other columns off the screen. A column with multi-line text (a text area or rich text
+/// property, or the values of a to-many relation) may be wider.
+const MIN_COLUMN_WIDTH: f64 = 8.0;
+const MAX_COLUMN_WIDTH: f64 = 60.0;
+const MAX_MULTILINE_COLUMN_WIDTH: f64 = 90.0;
+
+/// Width of the longest line of `text` in Excel character units. A wide character (CJK, emoji)
+/// takes two.
+fn text_width(text: &str) -> f64 {
+    text.lines()
+        .map(|line| {
+            line.chars()
+                .map(|c| if (c as u32) >= 0x1100 { 2.0 } else { 1.0 })
+                .sum::<f64>()
+        })
+        .fold(0.0, f64::max)
+}
+
+/// The width of a column: its longest line plus some room, within the limits.
+fn column_width(longest: f64, multiline: bool) -> f64 {
+    let max = if multiline {
+        MAX_MULTILINE_COLUMN_WIDTH
+    } else {
+        MAX_COLUMN_WIDTH
+    };
+    (longest * 1.1 + 2.0).clamp(MIN_COLUMN_WIDTH, max)
+}
+
 /// The XLSX file: one sheet with the header row and the rows below it. Numbers are number cells,
 /// booleans boolean cells and everything else text (an empty value leaves the cell empty).
 pub fn xlsx(
     headers: &[String],
     rows: &[Vec<Option<Value>>],
+    dates: &[Vec<Option<ExcelDate>>],
     sheet: &str,
 ) -> Result<Vec<u8>, String> {
     let error =
@@ -182,9 +228,22 @@ pub fn xlsx(
     let worksheet = workbook.add_worksheet();
     worksheet.set_name(sheet_name(sheet)).map_err(error)?;
 
+    // Text with a line break is wrapped, so every line shows (Excel grows the row to fit).
+    let wrap = Format::new().set_text_wrap();
+    // The header is bold and has a filter button (about 2 characters wide), so it needs room.
+    let bold = Format::new().set_bold();
+    let mut longest: Vec<f64> = headers
+        .iter()
+        .map(|header| text_width(header) + 2.0)
+        .collect();
+    let mut multiline = vec![false; headers.len()];
+    let mut date_formats: HashMap<String, Format> = HashMap::new();
+
     for (column, header) in headers.iter().enumerate() {
         let column = u16::try_from(column).map_err(|_| "Too many columns for an Excel file")?;
-        worksheet.write_string(0, column, header).map_err(error)?;
+        worksheet
+            .write_string_with_format(0, column, header, &bold)
+            .map_err(error)?;
     }
     for (index, row) in rows.iter().enumerate() {
         let row_number = u32::try_from(index + 1)
@@ -193,21 +252,50 @@ pub fn xlsx(
             .ok_or("Too many records for an Excel sheet (at most 1,048,575)")?;
         for (column, value) in row.iter().enumerate() {
             let column = column as u16;
+            // A date column: the date as an Excel date, shown the way the format says. Its width
+            // follows the text.
+            let date = dates
+                .get(index)
+                .and_then(|row| row.get(usize::from(column)))
+                .and_then(Option::as_ref);
+            if let (Some(date), Some(Value::String(text))) = (date, value) {
+                let width = &mut longest[usize::from(column)];
+                *width = width.max(text_width(text));
+                let format = date_formats
+                    .entry(date.number_format.clone())
+                    .or_insert_with(|| Format::new().set_num_format(&date.number_format));
+                worksheet
+                    .write_number_with_format(row_number, column, date.serial, format)
+                    .map_err(error)?;
+                continue;
+            }
             match value {
                 None | Some(Value::Null) => {}
                 Some(Value::String(text)) if text.is_empty() => {}
                 Some(Value::String(text)) => {
                     check_cell_length(text, &headers[usize::from(column)], index)?;
-                    worksheet
-                        .write_string(row_number, column, text)
-                        .map_err(error)?;
+                    let width = &mut longest[usize::from(column)];
+                    *width = width.max(text_width(text));
+                    if text.contains(['\n', '\r']) {
+                        multiline[usize::from(column)] = true;
+                        worksheet
+                            .write_string_with_format(row_number, column, text, &wrap)
+                            .map_err(error)?;
+                    } else {
+                        worksheet
+                            .write_string(row_number, column, text)
+                            .map_err(error)?;
+                    }
                 }
                 Some(Value::Bool(flag)) => {
+                    longest[usize::from(column)] = longest[usize::from(column)].max(5.0);
                     worksheet
                         .write_boolean(row_number, column, *flag)
                         .map_err(error)?;
                 }
                 Some(Value::Number(number)) if is_exact_in_excel(number) => {
+                    let width = &mut longest[usize::from(column)];
+                    *width = width.max(number_to_string(number).len() as f64);
                     worksheet
                         .write_number(row_number, column, number.as_f64().unwrap_or(0.0))
                         .map_err(error)?;
@@ -215,6 +303,8 @@ pub fn xlsx(
                 // Excel stores numbers as doubles: a larger integer would be rounded, so it is
                 // written as text with all its digits.
                 Some(Value::Number(number)) => {
+                    let width = &mut longest[usize::from(column)];
+                    *width = width.max(number.to_string().len() as f64);
                     worksheet
                         .write_string(row_number, column, number.to_string())
                         .map_err(error)?;
@@ -222,12 +312,30 @@ pub fn xlsx(
                 Some(other) => {
                     let text = other_to_string(other);
                     check_cell_length(&text, &headers[usize::from(column)], index)?;
+                    let width = &mut longest[usize::from(column)];
+                    *width = width.max(text_width(&text));
                     worksheet
                         .write_string(row_number, column, text)
                         .map_err(error)?;
                 }
             }
         }
+    }
+    // A real header row: it stays visible while scrolling and every column can be filtered or
+    // sorted.
+    worksheet.set_freeze_panes(1, 0).map_err(error)?;
+    if !headers.is_empty() {
+        let last_column =
+            u16::try_from(headers.len() - 1).map_err(|_| "Too many columns for an Excel file")?;
+        let last_row = u32::try_from(rows.len()).unwrap_or(0);
+        worksheet
+            .autofilter(0, 0, last_row, last_column)
+            .map_err(error)?;
+    }
+    for (column, (longest, multiline)) in longest.iter().zip(&multiline).enumerate() {
+        worksheet
+            .set_column_width(column as u16, column_width(*longest, *multiline))
+            .map_err(error)?;
     }
     workbook.save_to_buffer().map_err(error)
 }
@@ -236,6 +344,16 @@ pub fn xlsx(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn column_widths_follow_the_longest_line_within_limits() {
+        assert_eq!(text_width("ab\nabcd\nabc"), 4.0);
+        assert_eq!(text_width("日本"), 4.0);
+        assert_eq!(column_width(0.0, false), MIN_COLUMN_WIDTH);
+        assert!((column_width(20.0, false) - 24.0).abs() < 1e-9);
+        assert_eq!(column_width(500.0, false), MAX_COLUMN_WIDTH);
+        assert_eq!(column_width(500.0, true), MAX_MULTILINE_COLUMN_WIDTH);
+    }
 
     #[test]
     fn numbers_print_like_javascript() {
@@ -361,13 +479,13 @@ mod tests {
     #[test]
     fn text_too_long_for_an_excel_cell_names_the_column() {
         let rows = vec![vec![Some(json!("x".repeat(32_768)))]];
-        let error = xlsx(&["Notes".into()], &rows, "Export").unwrap_err();
+        let error = xlsx(&["Notes".into()], &rows, &[], "Export").unwrap_err();
         assert!(
             error.starts_with("The value in column \"Notes\" of record 1 has 32768 characters"),
             "{error}"
         );
         let rows = vec![vec![Some(json!("x".repeat(32_767)))]];
-        assert!(xlsx(&["Notes".into()], &rows, "Export").is_ok());
+        assert!(xlsx(&["Notes".into()], &rows, &[], "Export").is_ok());
     }
 
     /// The text of one file inside the XLSX zip.
@@ -405,7 +523,7 @@ mod tests {
                 Some(json!(1)),
             ],
         ];
-        let bytes = xlsx(&headers, &rows, "People").unwrap();
+        let bytes = xlsx(&headers, &rows, &[], "People").unwrap();
         let sheet = part(&bytes, "xl/worksheets/sheet1.xml");
         let strings = part(&bytes, "xl/sharedStrings.xml");
         let workbook = part(&bytes, "xl/workbook.xml");
@@ -433,6 +551,60 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_has_a_frozen_filtered_bold_header_and_fitted_columns() {
+        let headers: Vec<String> = ["Name", "Notes"].iter().map(|s| s.to_string()).collect();
+        let rows = vec![
+            vec![
+                Some(json!("Ann")),
+                Some(json!("one\ntwo line text that is longer")),
+            ],
+            vec![Some(json!("Bob")), None],
+        ];
+        let bytes = xlsx(&headers, &rows, &[], "Export").unwrap();
+        let sheet = part(&bytes, "xl/worksheets/sheet1.xml");
+        let styles = part(&bytes, "xl/styles.xml");
+
+        // The first row stays visible, and the header row has filter buttons over all rows.
+        assert!(sheet.contains(r#"state="frozen""#), "{sheet}");
+        assert!(sheet.contains(r#"ySplit="1""#), "{sheet}");
+        assert!(sheet.contains(r#"<autoFilter ref="A1:B3"/>"#), "{sheet}");
+        // The header is bold and the multi-line cell wraps.
+        assert!(styles.contains("<b/>"), "{styles}");
+        assert!(styles.contains(r#"wrapText="1""#), "{styles}");
+        // The Notes column is wider than the default (8.43) and fits its longest line.
+        assert!(sheet.contains(r#"<col min="2" max="2" width="#), "{sheet}");
+        let width: f64 = sheet
+            .split(r#"<col min="2" max="2" width=""#)
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .and_then(|text| text.parse().ok())
+            .unwrap();
+        assert!(width > 20.0 && width < 40.0, "{width}");
+    }
+
+    #[test]
+    fn xlsx_writes_dates_as_numbers_with_a_date_format() {
+        let headers: Vec<String> = ["Born", "Other"].iter().map(|s| s.to_string()).collect();
+        let rows = vec![vec![Some(json!("07-03-2024")), Some(json!("x"))]];
+        let dates = vec![vec![
+            Some(ExcelDate {
+                serial: 45358.0,
+                number_format: String::from(r"dd\-mm\-yyyy"),
+            }),
+            None,
+        ]];
+        let bytes = xlsx(&headers, &rows, &dates, "Export").unwrap();
+        let sheet = part(&bytes, "xl/worksheets/sheet1.xml");
+        let styles = part(&bytes, "xl/styles.xml");
+        // A number cell (no t="s"), with a style that has the date format.
+        assert!(sheet.contains(r#"<c r="A2" s="#), "{sheet}");
+        assert!(sheet.contains("<v>45358</v>"), "{sheet}");
+        assert!(styles.contains(r#"formatCode="dd\-mm\-yyyy""#), "{styles}");
+        // The other column stays text.
+        assert!(sheet.contains(r#"<c r="B2" t="s">"#), "{sheet}");
+    }
+
+    #[test]
     fn xlsx_is_a_zip_file() {
         let rows = vec![vec![
             Some(json!(1)),
@@ -441,7 +613,7 @@ mod tests {
             None,
         ]];
         let headers: Vec<String> = ["N", "T", "B", "E"].iter().map(|s| s.to_string()).collect();
-        let bytes = xlsx(&headers, &rows, "Export").unwrap();
+        let bytes = xlsx(&headers, &rows, &[], "Export").unwrap();
         assert_eq!(&bytes[..2], b"PK");
     }
 }

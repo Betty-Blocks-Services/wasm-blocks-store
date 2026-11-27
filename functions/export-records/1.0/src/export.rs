@@ -233,6 +233,9 @@ pub fn validate(params: &Params) -> Result<(), String> {
     Ok(())
 }
 
+/// The values of a to-many relation in one cell are separated by a line break.
+const MULTI_VALUE_SEPARATOR: &str = "\n";
+
 /// The file's bytes: the header row, then one row per record with the formats applied.
 pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String> {
     let columns: Vec<Column> = mapping::columns(params.mapping)?;
@@ -240,15 +243,42 @@ pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String>
     let formats = column_formats(params.formats, &columns)?;
 
     let mut rows = Vec::with_capacity(records.len());
+    // Real Excel dates for the single-valued date columns (the text in `rows` stays as the
+    // fallback and for the column width).
+    let mut dates = Vec::new();
+    let excel = matches!(params.file_type, FileType::Xlsx);
     for record in records {
         let mut row = Vec::with_capacity(columns.len());
+        let mut date_row = Vec::with_capacity(columns.len());
         for (column, format) in columns.iter().zip(&formats) {
-            row.push(match mapping::lookup(record, &column.path) {
-                Some(value) => Some(format::apply(&column.header, value, format.as_ref())?),
-                None => None,
+            let (values, multi) = mapping::lookup_all(record, &column.path);
+            let mut date = None;
+            row.push(if multi {
+                // A to-many relation: every value on its own line in one cell.
+                let mut lines = Vec::with_capacity(values.len());
+                for value in values {
+                    let value = format::apply(&column.header, value, format.as_ref())?;
+                    lines.push(cell::value_to_text(&value));
+                }
+                (!lines.is_empty()).then(|| Value::String(lines.join(MULTI_VALUE_SEPARATOR)))
+            } else {
+                match values.first() {
+                    Some(value) => {
+                        let formatted = format::apply(&column.header, value, format.as_ref())?;
+                        if let (true, Some(Format::Date(tokens)), Value::String(text)) =
+                            (excel, format, value)
+                        {
+                            date = format::excel_date(text, tokens);
+                        }
+                        Some(formatted)
+                    }
+                    None => None,
+                }
             });
+            date_row.push(date);
         }
         rows.push(row);
+        dates.push(date_row);
     }
 
     match params.file_type {
@@ -267,7 +297,7 @@ pub fn write_file(params: &Params, records: &[Value]) -> Result<Vec<u8>, String>
             )
             .into_bytes())
         }
-        FileType::Xlsx => cell::xlsx(&headers, &rows, params.sheet),
+        FileType::Xlsx => cell::xlsx(&headers, &rows, &dates, params.sheet),
     }
 }
 
@@ -615,6 +645,50 @@ mod tests {
             text,
             "Born;Name;Amount;Company;Active\r\n\"17-05-1990\";\"Ann\";\"12,5\";\"Acme\";TRUE\r\n\"\";\"Bob\";\"3\";\"\";FALSE\r\n"
         );
+    }
+
+    #[test]
+    fn a_to_many_relation_is_written_one_value_per_line() {
+        let mapping = parse_map(
+            r#"{"Name": "name", "Departments": "departments.description", "Since": "departments.since"}"#,
+            "M",
+        )
+        .unwrap();
+        let formats = parse_map(r#"{"Since": "Date|dd-MM-yyyy"}"#, "F").unwrap();
+        let variables = json!({});
+        let p = params(&mapping, &formats, &variables);
+        let records = vec![
+            json!({"name": "Ann", "departments": [
+                {"description": "Sales, EMEA", "since": "2024-03-07"},
+                {"description": "Say \"hi\"", "since": null}]}),
+            json!({"name": "Bob", "departments": []}),
+        ];
+        let text = String::from_utf8(write_file(&p, &records).unwrap()).unwrap();
+        assert_eq!(
+            text,
+            "Name;Departments;Since\r\n\"Ann\";\"Sales, EMEA\nSay \"\"hi\"\"\";\"07-03-2024\"\r\n\"Bob\";\"\";\"\"\r\n"
+        );
+    }
+
+    #[test]
+    fn excel_dates_are_numbers_and_csv_dates_stay_text() {
+        let mapping = parse_map(r#"{"Born": "birth_date", "Seen": "seen_at"}"#, "M").unwrap();
+        let formats = parse_map(r#"{"Born": "Date|dd-MM-yyyy", "Seen": "Date|QQQ"}"#, "F").unwrap();
+        let variables = json!({});
+        let mut p = params(&mapping, &formats, &variables);
+        p.file_type = FileType::Xlsx;
+        let records = vec![json!({"birthDate": "2024-03-07", "seenAt": "2024-03-07"})];
+        let bytes = write_file(&p, &records).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut sheet = String::new();
+        std::io::Read::read_to_string(
+            &mut archive.by_name("xl/worksheets/sheet1.xml").unwrap(),
+            &mut sheet,
+        )
+        .unwrap();
+        // Born is a number cell; Seen (the quarter has no Excel format) stays text.
+        assert!(sheet.contains("<v>45358</v>"), "{sheet}");
+        assert!(sheet.contains(r#"<c r="B2" t="s">"#), "{sheet}");
     }
 
     #[test]

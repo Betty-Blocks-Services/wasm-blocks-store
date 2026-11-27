@@ -192,7 +192,7 @@ pub fn columns(mapping: &[(String, Value)]) -> Result<Vec<Column>, String> {
             let path: Vec<String> = parts.iter().map(|part| snake_to_camel(part)).collect();
             if !parts.iter().all(|part| is_name(part)) || !path.iter().all(|part| is_name(part)) {
                 return Err(format!(
-                    "The property \"{text}\" of the column \"{header}\" is not valid: use a database name like created_at, or relation.property for a belongs-to relation"
+                    "The property \"{text}\" of the column \"{header}\" is not valid: use a database name like created_at, or relation.property for a relation"
                 ));
             }
             Ok(Column {
@@ -243,13 +243,33 @@ pub fn selection(columns: &[Column]) -> String {
     render(&root)
 }
 
-/// The value at `path` in a record, or `None` when a part of the path is missing or `null`.
-pub fn lookup<'a>(record: &'a Value, path: &[String]) -> Option<&'a Value> {
-    let mut current = record;
-    for key in path {
-        current = current.as_object()?.get(key)?;
+/// The values at `path` in a record, looking through to-many relations: a list on the way (a
+/// has-many or has-and-belongs-to-many relation) contributes the value of every item. The flag is
+/// `true` when a list was met, so the caller joins the values into one cell. `null` values are
+/// left out.
+pub fn lookup_all<'a>(record: &'a Value, path: &[String]) -> (Vec<&'a Value>, bool) {
+    fn walk<'a>(value: &'a Value, path: &[String], out: &mut Vec<&'a Value>, multi: &mut bool) {
+        if let Value::Array(items) = value {
+            *multi = true;
+            for item in items {
+                walk(item, path, out, multi);
+            }
+            return;
+        }
+        match path.split_first() {
+            None if !value.is_null() => out.push(value),
+            None => {}
+            Some((key, rest)) => {
+                if let Some(next) = value.as_object().and_then(|object| object.get(key)) {
+                    walk(next, rest, out, multi);
+                }
+            }
+        }
     }
-    (!current.is_null()).then_some(current)
+    let mut out = Vec::new();
+    let mut multi = false;
+    walk(record, path, &mut out, &mut multi);
+    (out, multi)
 }
 
 #[cfg(test)]
@@ -343,14 +363,36 @@ mod tests {
     }
 
     #[test]
-    fn lookup_follows_the_path() {
-        let record = json!({"a": {"b": 1, "n": null}, "f": false, "l": [1]});
+    fn lookup_all_looks_through_to_many_relations() {
+        let record = json!({
+            "name": "Ann",
+            "departments": [
+                {"description": "Sales, EMEA", "head": {"name": "Cy"}},
+                {"description": null, "head": null},
+                {"description": "Support", "head": {"name": "Di"}}
+            ],
+            "tags": ["a", "b"],
+            "none": [],
+            "f": false
+        });
         let path = |p: &str| p.split('.').map(String::from).collect::<Vec<_>>();
-        assert_eq!(lookup(&record, &path("a.b")), Some(&json!(1)));
-        assert_eq!(lookup(&record, &path("f")), Some(&json!(false)));
-        assert_eq!(lookup(&record, &path("a.n")), None);
-        assert_eq!(lookup(&record, &path("a.x")), None);
-        assert_eq!(lookup(&record, &path("l.0")), None);
-        assert_eq!(lookup(&json!({"a": null}), &path("a.b")), None);
+        let (values, multi) = lookup_all(&record, &path("departments.description"));
+        assert_eq!(values, [&json!("Sales, EMEA"), &json!("Support")]);
+        assert!(multi);
+        let (values, _) = lookup_all(&record, &path("departments.head.name"));
+        assert_eq!(values, [&json!("Cy"), &json!("Di")]);
+        let (values, multi) = lookup_all(&record, &path("tags"));
+        assert_eq!(values, [&json!("a"), &json!("b")]);
+        assert!(multi);
+        assert_eq!(lookup_all(&record, &path("none")), (vec![], true));
+        assert_eq!(
+            lookup_all(&record, &path("name")),
+            (vec![&json!("Ann")], false)
+        );
+        assert_eq!(
+            lookup_all(&record, &path("f")),
+            (vec![&json!(false)], false)
+        );
+        assert_eq!(lookup_all(&record, &path("x.y")), (vec![], false));
     }
 }

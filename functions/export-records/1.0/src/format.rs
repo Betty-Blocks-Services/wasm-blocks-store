@@ -280,6 +280,137 @@ fn format_moment(column: &str, text: &str, tokens: &[Token]) -> Result<String, S
     Ok(out)
 }
 
+/// A date, time or datetime as an Excel cell: the serial number and the number format that makes
+/// Excel show it the way the pattern says.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExcelDate {
+    pub serial: f64,
+    pub number_format: String,
+}
+
+/// Excel's serial number of 1900-03-01, the first date it counts correctly (it treats 1900 as a
+/// leap year, so earlier serials are off by one).
+const FIRST_RELIABLE_SERIAL: i64 = 61;
+
+/// The Excel cell for a date value, or `None` when it has to stay text: the value is no date, is
+/// before 1900-03-01, or the pattern has something Excel's number formats cannot show the same
+/// way (the quarter, 12-hour time without AM/PM, a minute Excel would read as a month...).
+pub fn excel_date(text: &str, tokens: &[Token]) -> Option<ExcelDate> {
+    let number_format = excel_number_format(tokens)?;
+    let (date, time) = match parse_moment(text)? {
+        Moment::Date(date) => (Some(date), NaiveTime::MIN),
+        Moment::Time(time) => (None, time),
+        Moment::DateTime(datetime) => (Some(datetime.date()), datetime.time()),
+    };
+    let days = match date {
+        Some(date) => {
+            let epoch = NaiveDate::from_ymd_opt(1899, 12, 30)?;
+            let days = date.signed_duration_since(epoch).num_days();
+            if days < FIRST_RELIABLE_SERIAL {
+                return None;
+            }
+            days as f64
+        }
+        None => 0.0,
+    };
+    let seconds = f64::from(time.num_seconds_from_midnight())
+        + f64::from(time.nanosecond() % 1_000_000_000) / 1e9;
+    Some(ExcelDate {
+        serial: days + seconds / 86_400.0,
+        number_format,
+    })
+}
+
+/// The Excel number format for date-fns tokens, or `None` when there is no exact equivalent.
+fn excel_number_format(tokens: &[Token]) -> Option<String> {
+    let has_meridiem = tokens.iter().any(|t| matches!(t, Token::Field('a', _)));
+    let has_12_hour = tokens.iter().any(|t| matches!(t, Token::Field('h', _)));
+    if has_meridiem && !has_12_hour {
+        return None;
+    }
+    // The letters of the fields before and after a token, skipping the literals between them.
+    let field_before = |index: usize| {
+        tokens[..index].iter().rev().find_map(|t| match t {
+            Token::Field(letter, _) => Some(*letter),
+            Token::Literal(_) => None,
+        })
+    };
+    let field_after = |index: usize| {
+        tokens[index + 1..].iter().find_map(|t| match t {
+            Token::Field(letter, _) => Some(*letter),
+            Token::Literal(_) => None,
+        })
+    };
+    // Excel reads an `m` right after an hour or right before a second as minutes, otherwise as
+    // months.
+    let next_to_time = |index: usize| {
+        matches!(field_before(index), Some('H' | 'h')) || field_after(index) == Some('s')
+    };
+
+    let mut out = String::new();
+    for (index, token) in tokens.iter().enumerate() {
+        match token {
+            Token::Literal(text) => {
+                // The dot of fractional seconds (`ss.SSS`) must not be escaped.
+                if text == "."
+                    && field_before(index) == Some('s')
+                    && field_after(index) == Some('S')
+                {
+                    out.push('.');
+                } else {
+                    for c in text.chars() {
+                        out.push('\\');
+                        out.push(c);
+                    }
+                }
+            }
+            Token::Field(letter, count) => {
+                let count = *count;
+                match letter {
+                    'y' => out.push_str(if count == 2 { "yy" } else { "yyyy" }),
+                    'M' => {
+                        if next_to_time(index) {
+                            return None;
+                        }
+                        out.push_str(match count {
+                            1 => "m",
+                            2 => "mm",
+                            3 => "mmm",
+                            4 => "mmmm",
+                            _ => "mmmmm",
+                        });
+                    }
+                    'd' => out.push_str(if count == 1 { "d" } else { "dd" }),
+                    'E' => out.push_str(match count {
+                        1..=3 => "ddd",
+                        4 => "dddd",
+                        _ => return None,
+                    }),
+                    'H' if !has_meridiem => out.push_str(if count == 1 { "h" } else { "hh" }),
+                    'h' if has_meridiem => out.push_str(if count == 1 { "h" } else { "hh" }),
+                    'm' => {
+                        if !next_to_time(index) {
+                            return None;
+                        }
+                        out.push_str(if count == 1 { "m" } else { "mm" });
+                    }
+                    's' => out.push_str(if count == 1 { "s" } else { "ss" }),
+                    'S' if count <= 3 && out.ends_with('.') => {
+                        out.push_str(&"0".repeat(count));
+                    }
+                    'a' => out.push_str(match count {
+                        1 | 2 => "AM/PM",
+                        3 => "am/pm",
+                        _ => return None,
+                    }),
+                    _ => return None,
+                }
+            }
+        }
+    }
+    Some(out)
+}
+
 /// The value after formatting. Only text and numbers are formatted; other values (and values
 /// without a format) are returned as they are.
 pub fn apply(column: &str, value: &Value, format: Option<&Format>) -> Result<Value, String> {
@@ -307,6 +438,55 @@ mod tests {
     fn date(pattern: &str, value: &str) -> Result<String, String> {
         let format = parse("C", &format!("Date|{pattern}"))?;
         apply("C", &json!(value), Some(&format)).map(|v| v.as_str().unwrap().to_string())
+    }
+
+    fn excel(pattern: &str, value: &str) -> Option<ExcelDate> {
+        let Format::Date(tokens) = parse("C", &format!("Date|{pattern}")).unwrap() else {
+            unreachable!()
+        };
+        excel_date(value, &tokens)
+    }
+
+    #[test]
+    fn dates_become_excel_serials_with_a_matching_number_format() {
+        let date = excel("dd-MM-yyyy", "2024-03-07").unwrap();
+        assert_eq!(date.number_format, r"dd\-mm\-yyyy");
+        // 2024-03-07 is serial 45358 in Excel.
+        assert_eq!(date.serial, 45358.0);
+
+        let datetime = excel("yyyy-MM-dd HH:mm:ss.SSS", "2024-03-07T12:00:00.500Z").unwrap();
+        assert_eq!(datetime.number_format, r"yyyy\-mm\-dd\ hh\:mm\:ss.000");
+        assert!((datetime.serial - (45358.5 + 0.5 / 86_400.0)).abs() < 1e-9);
+
+        let twelve = excel("h:mm a", "2024-03-07T13:05:00Z").unwrap();
+        assert_eq!(twelve.number_format, r"h\:mm\ AM/PM");
+
+        let time = excel("HH:mm", "06:00").unwrap();
+        assert_eq!(time.serial, 0.25);
+        assert_eq!(
+            excel("MMM d, yyyy", "2024-03-07").unwrap().number_format,
+            r"mmm\ d\,\ yyyy"
+        );
+    }
+
+    #[test]
+    fn dates_without_an_exact_excel_equivalent_stay_text() {
+        // The quarter, 12-hour time without AM/PM, 24-hour time with AM/PM, a minute that
+        // Excel would read as a month, and a month it would read as a minute.
+        for pattern in [
+            "QQQ yyyy",
+            "h:mm",
+            "HH:mm a",
+            "mm",
+            "HH MM",
+            "yyyy-MM-dd EEEEE",
+            "ss.SSSS",
+        ] {
+            assert_eq!(excel(pattern, "2024-03-07T13:05:09Z"), None, "{pattern}");
+        }
+        // Not a date, or before the first date Excel counts correctly.
+        assert_eq!(excel("dd-MM-yyyy", "soon"), None);
+        assert_eq!(excel("dd-MM-yyyy", "1900-01-15"), None);
     }
 
     #[test]

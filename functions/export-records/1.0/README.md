@@ -26,7 +26,7 @@ under "Not tested yet" are still open.
 | Delimiter | `;` `,` `\|` tab or space (values `semicolon`, `comma`, `pipe`, `tab`, `space`, WIT `enum delimiter`); default `,`. CSV only |
 | Model to save file into / Property to save file into | Where the file reference is meant to go (the upload needs them) |
 | Filename | Without extension: `.csv` or `.xlsx` is added (a name that already ends in it does not get it twice). Empty means `export` |
-| Property mapping | KEY = column header, VALUE = database name (`created_at`) or `relation.property` for a belongs-to relation. Columns follow the order of the map |
+| Property mapping | KEY = column header, VALUE = database name (`created_at`) or `relation.property` for a relation. For a has-many or has-and-belongs-to-many relation (`departments.description`) the values of all related records are written in one cell, one per line. Columns follow the order of the map |
 | Format mapping for export columns | KEY = column header, VALUE = `Date\|<format>` (also `Datetime\|` and `Time\|`), or `Decimal\|<separator>` / `Price\|<separator>` |
 | Use BOM | CSV only; default on |
 | Escape formulas | CSV only; default on. Puts a `'` in front of text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet program shows it as text instead of running it as a formula (CSV injection). Column headers are escaped the same way. A sign followed by only digits, spaces, `.` and `,` (and maybe a closing `%`) is left alone: `-12,5`, `+31 6 1234 5678`, `-5%`. Other text that starts with a sign does get the `'`, e.g. `- none -` |
@@ -90,7 +90,11 @@ under "Not tested yet" are still open.
 - **A blank row in the Format mapping** (no key and no value) is skipped.
 - **Incomplete exports fail.** A Data API response without results, or a page that comes back empty
   before `totalCount` is reached, fails the step. The ActionsJS step could write a short file.
-- **A has-many relation or object** in a column is written as JSON instead of `[object Object]`.
+- **A has-many or has-and-belongs-to-many relation** (`departments.description`) is written as one value per line in a single cell (the ActionsJS step wrote `[object Object]`). Empty values are left out and a record without related records gets an empty cell. Values are not quoted or escaped inside the cell, so a value that holds a line break itself cannot be told from two values.
+- **An object** that is not a relation property is written as JSON.
+- **Excel column widths** fit the longest line of each column (header included), between 8 and 60 characters, up to 90 for a column with multi-line text. Cells with a line break wrap, so every line shows. The ActionsJS step left every column at the default width.
+- **Excel dates are real dates.** A column with a `Date|`, `Datetime|` or `Time|` format is written as an Excel date with a matching number format, so it sorts and filters as a date and shows as the pattern says. A value stays text when the pattern has no exact Excel equivalent (the quarter `Q`, `h` without `a`, `H` with `a`, a minute or month Excel would read the other way, more than 3 `S`), when the value is no date, or when the date is before 1900-03-01. A to-many relation column is always text. CSV is always text. The ActionsJS step wrote text.
+- **The Excel header row** is bold, frozen (it stays visible while scrolling) and has filter buttons. The ActionsJS step wrote it as plain text in the first row.
 - **A header that holds the delimiter, a quote or a line break** is quoted, so it cannot break the file.
 - **A property path with other characters than letters, digits and `_`** fails the step instead of
   being turned into a different field name.
